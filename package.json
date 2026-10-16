@@ -1,0 +1,13 @@
+{
+  "name": "codex-dsh-subagent-plugin",
+  "version": "0.5.4",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "setup": "node server/setup.mjs --install-dsh"
+  }
+}

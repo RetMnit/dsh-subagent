@@ -1,0 +1,17 @@
+{
+  "name": "dsh-subagent",
+  "version": "0.5.4",
+  "description": "Delegate tasks to local DSH Desktop or hidden CLI with exact presets and tracked completion.",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "requires_local_executor": true,
+  "interface": {
+    "displayName": "DSH Subagent",
+    "shortDescription": "桌面与无头 DSH 任务委派",
+    "developerName": "Mnit",
+    "category": "Developer Tools",
+    "capabilities": [],
+    "defaultPrompt": "打开 DSH 子智能体参数配置，先不要执行任务。",
+    "logo": "./assets/icon.svg"
+  }
+}

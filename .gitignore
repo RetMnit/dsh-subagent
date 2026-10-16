@@ -1,0 +1,15 @@
+node_modules/
+.env
+.env.*
+*.log
+*.tmp
+coverage/
+CodexDSHBridge/
+acceptance-*
+config.json
+configurations.json
+dispatch-requests.json
+job-owners.json
+pruned-jobs.json
+supervisor*.json
+**/job-*.json

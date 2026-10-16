@@ -1,0 +1,3 @@
+- insert:
+    - id: codex-dsh-bridge
+      name: '@local/codex-dsh-bridge'

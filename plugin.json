@@ -1,0 +1,26 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "dsh-subagent",
+  "version": "0.5.4",
+  "description": "Delegate local tasks to DeepSeek Harness Desktop or hidden CLI with exact presets, session continuation, status and results.",
+  "homepage": "https://github.com/RetMnit/dsh-subagent",
+  "repository": "https://github.com/RetMnit/dsh-subagent.git",
+  "author": {
+    "name": "Mnit"
+  },
+  "extensions": {
+    "com.openai": {
+      "requires_local_executor": true,
+      "interface": {
+        "displayName": "DSH Subagent",
+        "shortDescription": "桌面与无头 DSH 任务委派",
+        "longDescription": "先配置参数，经用户明确授权后委派 DSH 任务；支持桌面对话、后台运行和进度看板。",
+        "developerName": "Mnit",
+        "category": "Developer Tools",
+        "capabilities": [],
+        "defaultPrompt": "打开 DSH 子智能体参数配置，先不要执行任务。",
+        "logo": "./assets/icon.svg"
+      }
+    }
+  }
+}

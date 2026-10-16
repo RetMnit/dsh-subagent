@@ -1,0 +1,32 @@
+{
+  "name": "@local/codex-dsh-bridge",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Codex task bridge for DSH 0.2.0-rc.2",
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh": "0.2.0-rc.2"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    }
+  }
+}

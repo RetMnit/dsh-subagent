@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DSH 委派任务</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,"Microsoft YaHei",sans-serif;background:#11151d;color:#e3e8f0}body{margin:0;padding:28px;max-width:1300px;margin:auto}header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:24px}h1{font-size:25px;margin:0}p{color:#97a8be;font-size:13px}.pill{font-size:12px;padding:6px 10px;border-radius:20px;background:#243246;color:#b6c8e5}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px}article{border:1px solid #2d384b;background:#171e2a;border-radius:14px;padding:19px;min-width:0}.top{display:flex;justify-content:space-between;gap:12px;align-items:center}h2{font-size:15px;font-weight:600;margin:0}.status{font-size:12px;color:#d7ae67}.completed{color:#78d4b0}.failed,.interrupted{color:#f39499}.muted{color:#8799b1;font-size:12px}.details{display:grid;grid-template-columns:65px 1fr;gap:7px;font-size:12px;margin:17px 0}.details b{font-weight:400;color:#8ea1bd}.details span{overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.6;background:#101722;padding:12px;border-radius:8px;max-height:300px;overflow:auto}.events{font:11px/1.8 monospace;color:#9bacbf}button{background:#25344a;border:1px solid #3b4e69;color:#d4e0f0;border-radius:7px;padding:7px 10px;cursor:pointer;margin-right:7px}button:disabled{opacity:.45;cursor:default}.empty{border:1px dashed #3b4960;border-radius:14px;padding:40px;color:#91a3bc}.caption{font-size:11px;color:#7d91ae;margin-top:24px}#providers{margin:10px 0 22px}.error{color:#ff9c9c}
+.turn-history,.run-log{margin-top:14px;border-top:1px solid #2d384b;padding-top:12px;font-size:13px;color:#b6c8e5}.turn-history summary,.run-log summary{cursor:pointer;padding:3px 0;line-height:1.6}.run-log .events{margin-top:10px}.turn-history section+section{border-top:1px solid #2d384b;margin-top:14px;padding-top:8px}.card-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px;padding-top:16px;border-top:1px solid #2d384b}.card-actions button{margin:0}
+</style>
+<header><div><h1>DSH 委派任务</h1><p>桌面细节与后台任务，共用一份运行记录</p></div><span class="pill" id="connection">正在连接</span></header>
+<div id="providers" class="muted"></div><main class="grid" id="jobs"></main>
+<section id="configuration" hidden>
+<h2>配置 DSH 子智能体</h2><p>本 Codex 会话只维护这一份配置，用于新建子智能体；续接保留原 DSH 会话参数。保存不会启动任务。</p>
+<form id="settings">
+<label>运行方式<select name="mode"><option value="desktop">Desktop · 查看对话细节</option><option value="headless">后台 CLI</option></select></label>
+<label>工作区<input name="workspace" required autocomplete="off"></label>
+<label>预设<input name="preset" placeholder="留空沿用 DSH" autocomplete="off"></label>
+<label>权限<select name="permission"><option value="">沿用 DSH</option><option value="read-only">只读</option><option value="workspace-write">工作区写入</option><option value="danger-full-access">完全权限</option></select></label>
+<label>模型提供方<input name="provider" placeholder="留空沿用 DSH" autocomplete="off"></label>
+<label>模型<input name="model" placeholder="留空沿用 DSH" autocomplete="off"></label>
+<label>推理档位<input name="reasoningEffort" placeholder="留空沿用 DSH" autocomplete="off"></label>
+<div class="actions"><button type="submit">保存配置</button><span id="saved" role="status"></span></div>
+</form></section>
+<style>
+#configuration{border:1px solid #3b4e69;background:#171e2a;border-radius:14px;padding:24px;margin-bottom:24px}#configuration h2{font-size:20px}#settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}#settings label{display:flex;flex-direction:column;gap:8px;font-size:13px;color:#b6c8e5}#settings input,#settings select{box-sizing:border-box;width:100%;background:#101722;border:1px solid #3b4e69;border-radius:7px;padding:10px;color:#e3e8f0;font:inherit}#settings .check{flex-direction:row;align-items:center}#settings input[type=checkbox]{width:auto}#settings .actions{grid-column:1/-1;display:flex;align-items:center;gap:12px}#saved{font-size:13px;color:#78d4b0}[hidden]{display:none!important}
+</style>
+<p class="caption">每个 DSH 会话显示一张子智能体卡片，续接更新原卡片，可展开查看交互记录。已结束交互记录保留 30 天，每个 Codex 会话最多 100 条；运行中的任务不清理。关闭窗口不会取消任务。</p>
+<script src="/dashboard.js" defer></script></html>
