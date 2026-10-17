@@ -7,10 +7,10 @@
 需要 Windows、Node.js 22+、Git、Codex 和 DSH Desktop。当前仅适配 DSH `0.2.1-rc.1` 的已验证构建；版本或构建不匹配会停止派发。先在 DSH 中完成自己的模型登录和 preset 配置。
 
 ```powershell
-git clone --branch v0.5.5 https://github.com/RetMnit/dsh-subagent.git
+git clone --branch v0.5.6 https://github.com/RetMnit/dsh-subagent.git
 cd dsh-subagent
 node server/setup.mjs --install-dsh
-codex plugin marketplace add RetMnit/dsh-subagent --ref v0.5.5
+codex plugin marketplace add RetMnit/dsh-subagent --ref v0.5.6
 codex plugin add dsh-subagent@dsh-subagent-tools
 ```
 
@@ -20,11 +20,11 @@ codex plugin add dsh-subagent@dsh-subagent-tools
 
 安装后完全退出并重新打开 DSH Desktop，使 DSH 端插件加载；再新开 Codex 会话，说“打开 DSH 子智能体参数配置，先不要执行任务”。安装、配置和检查不会发送模型任务。
 
-已有 GitHub 安装升级时，先在源码目录切到 `v0.5.5` 并运行上述 setup，再切换 Codex 的固定标签：
+已有 GitHub 安装升级时，先在源码目录切到 `v0.5.6` 并运行上述 setup，再切换 Codex 的固定标签：
 
 ```powershell
 codex plugin marketplace remove dsh-subagent-tools
-codex plugin marketplace add RetMnit/dsh-subagent --ref v0.5.5
+codex plugin marketplace add RetMnit/dsh-subagent --ref v0.5.6
 codex plugin add dsh-subagent@dsh-subagent-tools
 ```
 

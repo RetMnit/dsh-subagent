@@ -4,6 +4,7 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { ROOT, STATE, atomic, discoverRuntime, readJson } from './common.mjs';
+import { enableBridgeBundle } from './profiles.mjs';
 
 const runtime = discoverRuntime(process.env.DSH_INSTALL_DIR);
 const home = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
@@ -65,4 +66,7 @@ const invoke = args => {
 };
 invoke(['plugin', '--profile', 'desktop', 'add', 'link:' + companion, '--ignore-scripts']);
 invoke(['plugin', '--profile', settings.workerProfile, 'add', 'link:' + companion, '--ignore-scripts']);
+for (const profile of ['desktop', settings.workerProfile]) {
+  enableBridgeBundle(path.join(home, 'profiles', profile, 'package.json'));
+}
 console.log(JSON.stringify({ installed: true, backup, stateDir: STATE, workerProfile: settings.workerProfile, version: runtime.version }));
