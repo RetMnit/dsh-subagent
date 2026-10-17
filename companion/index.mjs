@@ -9,7 +9,7 @@ import { EventEmitter } from 'node:events';
 export const name = 'codex-dsh-bridge';
 export const inject = ['agents', 'sessions', 'sessionController', 'sessionQuery', 'sessionProjections',
   'agentPresets', 'agentDefaultModel', 'permissionPresets', 'workspaceRegistry', 'llm', 'connection'];
-const VERSION = '0.2.0-rc.2';
+const VERSION = '0.2.1-rc.1';
 const terminal = new Set(['completed', 'failed', 'cancelled', 'interrupted']);
 const now = () => new Date().toISOString();
 const errorOf = error => ({ code: error?.code ?? 'bridge/error', message: error?.message ?? String(error) });
@@ -48,6 +48,7 @@ export async function apply(ctx) {
   const controller = ctx.sessionController;
   for (const method of ['create', 'prompt', 'cancel', 'rename']) if (typeof controller[method] !== 'function') throw new Error('Missing sessionController.' + method);
   if (typeof controller.agents?.selectForNextRequest !== 'function') throw new Error('Missing pinned model-selection adapter');
+  if (typeof controller.agents?.resolveAgent !== 'function') throw new Error('Missing pinned session-resume adapter');
   const pipe = settings.pipes[mode];
   const instanceId = randomUUID();
   const jobs = new Map();
@@ -125,12 +126,21 @@ export async function apply(ctx) {
     const preset = existing?.preset ?? params.preset ?? ctx.agentPresets.defaultId;
     const declaration = await ctx.agentPresets.resolve(preset);
     if (declaration.broken) throw new Error('Preset is broken: ' + declaration.broken);
-    const sessionId = params.sessionId ?? ('codex-dsh-' + randomUUID());
+    let sessionId = params.sessionId ?? ('codex-dsh-' + randomUUID());
     if (ctx.agents.get(sessionId)?.status === 'running') throw new Error('Session is busy; do not silently queue or steer existing work');
     if (descendants(sessionId).some(item => item.status === 'running')) throw new Error('Session still owns running subagents');
-    const workspaceEntity = await ctx.workspaceRegistry.create(workspace);
-    await controller.create({ workspaceId: workspaceEntity.id, sessionId, agentPreset: preset });
-    const agent = ctx.agents.get(sessionId);
+    let agent;
+    if (existing) {
+      const resolved = await controller.agents.resolveAgent(sessionId);
+      if ('error' in resolved) throw resolved.error;
+      agent = resolved.agent;
+      if (String(agent?.id) !== sessionId) throw new Error('Resumed agent identity did not match the requested session');
+    } else {
+      const workspaceEntity = await ctx.workspaceRegistry.create(workspace);
+      const created = await controller.create({ workspaceId: workspaceEntity.id, sessionId, agentPreset: preset });
+      sessionId = created.sessionId;
+      agent = ctx.agents.get(sessionId);
+    }
     if (!agent) throw new Error('Created agent was not published');
     if (params.model) {
       const provider = string(params.model.provider, 'model.provider');
@@ -249,7 +259,7 @@ export async function apply(ctx) {
     return publicJob(job);
   };
   const methods = {
-    doctor: async () => ({ protocolVersion: 1, bridgeVersion: '0.2.0', dshVersion: manifest.version, mode, pid: process.pid, instanceId,
+    doctor: async () => ({ protocolVersion: 1, bridgeVersion: '0.2.1', dshVersion: manifest.version, mode, pid: process.pid, instanceId,
       profile: ctx.profileContext.name, navigationAck, capabilities: ['presets', 'resume', 'session-model', 'permissions', 'events', 'cancel', 'concurrent-sessions', ...(mode === 'desktop' ? ['desktop-navigation'] : [])] }),
     catalog: async () => ({ presets: await ctx.agentPresets.remoteExportList(), models: await controller.modelCatalog(),
       permissions: ctx.permissionPresets.catalog(), workspaces: ctx.workspaceRegistry.list().map(item => ({ workspaceId: item.id, path: item.path, title: item.title })) }),

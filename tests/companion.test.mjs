@@ -14,12 +14,12 @@ test('companion lifecycle, idempotency, cancellation, preset ownership and authe
   process.env.CODEX_DSH_STATE_DIR = root;
   const anchor = path.join(root, 'package.json'); fs.writeFileSync(anchor, '{}');
   const manifest = path.join(root, 'node_modules/@deepseek-ai/dsh/package.json');
-  fs.mkdirSync(path.dirname(manifest), { recursive: true }); fs.writeFileSync(manifest, JSON.stringify({ version: '0.2.0-rc.2' }));
+  fs.mkdirSync(path.dirname(manifest), { recursive: true }); fs.writeFileSync(manifest, JSON.stringify({ version: '0.2.1-rc.1' }));
   const pipe = process.platform === 'win32' ? '\\\\.\\pipe\\codex-dsh-test-' + randomUUID() : path.join(root, 'bridge.sock');
   const settings = { token: randomUUID(), pipes: { headless: pipe }, defaults: { workspace: root, permission: 'danger-full-access' } };
   fs.writeFileSync(path.join(root, 'config.json'), JSON.stringify(settings));
-  const bus = new EventEmitter(); const agents = new Map(); const effects = [];
-  let promptCount = 0; let globalSaves = 0; let flushes = 0;
+  const bus = new EventEmitter(); const agents = new Map(); const persisted = new Map(); const effects = [];
+  let promptCount = 0; let globalSaves = 0; let flushes = 0; let createCount = 0; let resumeError;
   const ctx = {
     profileContext: { name: 'codex-worker', installAnchor: anchor },
     logger: { info() {}, warn() {} },
@@ -28,7 +28,7 @@ test('companion lifecycle, idempotency, cancellation, preset ownership and authe
     get(name) { return name === 'jobs' ? { list: () => [] } : undefined; },
     agents: { get: id => agents.get(id), list: () => [...agents.values()] },
     sessions: { async flush() { flushes++; } },
-    sessionQuery: { async observeSession(id) { const agent = agents.get(id); if (!agent) throw new Error('Session not found');
+    sessionQuery: { async observeSession(id) { const agent = persisted.get(id); if (!agent) throw new Error('Session not found');
       return { header: agent.session.header, projections: { values: { agentPreset: agent.preset } }, [Symbol.dispose]() {} }; } },
     sessionProjections: { onChanged(fn) { bus.on('projection', fn); return () => bus.off('projection', fn); } },
     agentPresets: { defaultId: 'unity', async resolve(id) { if (id !== 'unity') throw new Error('Unknown preset'); return { id }; },
@@ -51,11 +51,17 @@ test('companion lifecycle, idempotency, cancellation, preset ownership and authe
       finish(kind, text) { if (agent.status !== 'running') return; if (text) session.append('assistant/message', { message: { content: [{ type: 'text', text }] }, usage: { inputTokens: 1, outputTokens: 1 } }); session.append('turn/end', { reason: kind === 'error' ? { kind, error: { code: 'fake/error', message: 'fake failure' } } : { kind } }); agent.status = 'idle'; resolveIdle(); bus.emit('agent/status'); },
       cancel() { agent.finish('aborted'); },
     };
-    agent.ctx.agent = agent; agents.set(agent.id, agent); return agent;
+    agent.ctx.agent = agent; agents.set(agent.id, agent); persisted.set(agent.id, agent); return agent;
   };
   ctx.sessionController = {
-    agents: { selectionFor: agent => agent.selection, selectForNextRequest: (agent, selected) => { agent.selection.current = selected; } },
-    async create(request) { if (!agents.has(request.sessionId)) makeAgent(request); return { sessionId: request.sessionId }; },
+    agents: { selectionFor: agent => agent.selection, selectForNextRequest: (agent, selected) => { agent.selection.current = selected; },
+      async resolveAgent(id) { if (resumeError) return { error: resumeError }; const agent = persisted.get(id); if (!agent) return { error: new Error('Session not found') }; agents.set(id, agent); return { agent }; } },
+    async create(request) {
+      createCount++;
+      // DSH 0.2.1 creates another session when a named conversation has started.
+      if (persisted.get(request.sessionId)?.session.seq > 0) request = { ...request, sessionId: 'minted-' + randomUUID() };
+      if (!agents.has(request.sessionId)) makeAgent(request); return { sessionId: request.sessionId };
+    },
     async rename() {}, async modelCatalog() { return {}; }, async list() { return { items: [...agents.values()].map(agent => ({ sessionId: agent.id, cwd: root, running: agent.status === 'running', projections: { kind: 'sequenced', asOfSeq: agent.session.seq, values: { title: '旧问题 Unity', agentPreset: agent.preset } } })) }; },
     async prompt(request) { promptCount++; const agent = agents.get(request.sessionId); agent.begin(); const text = request.content[0].text;
       if (text === 'child') {
@@ -89,6 +95,22 @@ test('companion lifecycle, idempotency, cancellation, preset ownership and authe
       assert.equal(done.status, 'completed'); assert.equal(done.result, '中文回调✓'); assert.equal(done.actualModel.model, 'fake-v2'); assert.ok(flushes >= 2);
       const again = await call('start', params); assert.equal(again.jobId, first.jobId); assert.equal(promptCount, 1);
       await assert.rejects(call('start', { ...params, prompt: 'changed' }), /different arguments/);
+    });
+    await t.test('cold resume restores the exact nonblank session without creating or changing its settings', async () => {
+      const original = persisted.get(sessionId); const createdBefore = createCount;
+      agents.delete(sessionId);
+      const resumed = await call('prepare', { sessionId });
+      assert.equal(resumed.sessionId, sessionId); assert.equal(agents.get(sessionId), original);
+      assert.equal(createCount, createdBefore); assert.equal(resumed.effective.model.model, 'fake-v2');
+      assert.equal(resumed.effective.preset, 'unity'); assert.equal(resumed.effective.permission, 'danger-full-access');
+      assert.equal(promptCount, 1);
+    });
+    await t.test('resume domain errors never fall back to creating or prompting another session', async () => {
+      const createdBefore = createCount;
+      resumeError = Object.assign(new Error('Session writer is held'), { code: 'session/writer-held' });
+      try { await assert.rejects(call('prepare', { sessionId }), /writer is held/); }
+      finally { resumeError = undefined; }
+      assert.equal(createCount, createdBefore); assert.equal(promptCount, 1);
     });
     await t.test('preset or workspace mismatch never sends a prompt', async () => {
       const job = await call('start', { requestId: 'mismatch', sessionId, preset: 'other', prompt: 'hi' });
@@ -130,7 +152,7 @@ test('companion lifecycle, idempotency, cancellation, preset ownership and authe
       await call('cancel',{jobId:two.jobId});await settled(two.jobId);
     });
     await t.test('unknown DSH version refuses startup', async () => {
-      fs.writeFileSync(manifest, JSON.stringify({ version: '0.3.0' })); await assert.rejects(apply(ctx), /supports 0.2.0-rc.2/);
+      fs.writeFileSync(manifest, JSON.stringify({ version: '0.3.0' })); await assert.rejects(apply(ctx), /supports 0.2.1-rc.1/);
     });
     assert.equal(globalSaves, 0);
   } finally {

@@ -19,7 +19,7 @@ test('one saved configuration starts a concurrent batch, shows every task, dedup
       sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.setEncoding('utf8');let buffer='';
       socket.on('data',chunk=>{buffer+=chunk;let cut;while((cut=buffer.indexOf('\n'))>=0){const request=JSON.parse(buffer.slice(0,cut));buffer=buffer.slice(cut+1);void(async()=>{
         assert.equal(request.token,token);let result;
-        if(request.method==='doctor')result={mode,protocolVersion:1,dshVersion:'0.2.0-rc.2',instanceId:mode,capabilities:['concurrent-sessions']};
+        if(request.method==='doctor')result={mode,protocolVersion:1,dshVersion:'0.2.1-rc.1',instanceId:mode,capabilities:['concurrent-sessions']};
         else if(request.method==='sessions')result=[];
         else if(request.method==='status')result=providerJobs[mode].find(job=>job.jobId===request.params.jobId);
         else if(request.method==='start'){

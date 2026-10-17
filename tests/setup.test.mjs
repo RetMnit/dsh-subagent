@@ -15,6 +15,8 @@ test('new-machine setup accepts a custom workspace and preserves it and its toke
     const run=()=>{const result=spawnSync(process.execPath,[fileURLToPath(new URL('../server/setup.mjs',import.meta.url))],{env,windowsHide:true,encoding:'utf8'});assert.equal(result.status,0,result.stderr);return JSON.parse(fs.readFileSync(path.join(state,'config.json')))};
     const first=run();assert.equal(first.defaults.workspace,workspace);assert.ok(fs.statSync(workspace).isDirectory());
     delete env.CODEX_DSH_WORKSPACE;const again=run();assert.equal(again.defaults.workspace,workspace);assert.equal(again.token,first.token);
+    const backups=fs.readdirSync(path.join(state,'backups')).map(name=>path.join(state,'backups',name,'config.json')).filter(file=>fs.existsSync(file));
+    assert.equal(backups.length,1);assert.deepEqual(JSON.parse(fs.readFileSync(backups[0])),first);
   }finally{
     assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(root).startsWith('codex-dsh-setup-test-'));fs.rmSync(root,{recursive:true,force:true});
   }

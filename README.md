@@ -4,13 +4,13 @@
 
 ## 安装到新机器
 
-需要 Windows、Node.js 22+、Git、Codex 和 DSH Desktop。当前仅适配 DSH `0.2.0-rc.2` 的已验证构建；版本或构建不匹配会停止派发。先在 DSH 中完成自己的模型登录和 preset 配置。
+需要 Windows、Node.js 22+、Git、Codex 和 DSH Desktop。当前仅适配 DSH `0.2.1-rc.1` 的已验证构建；版本或构建不匹配会停止派发。先在 DSH 中完成自己的模型登录和 preset 配置。
 
 ```powershell
-git clone --branch v0.5.4 https://github.com/RetMnit/dsh-subagent.git
+git clone --branch v0.5.5 https://github.com/RetMnit/dsh-subagent.git
 cd dsh-subagent
 node server/setup.mjs --install-dsh
-codex plugin marketplace add RetMnit/dsh-subagent --ref v0.5.4
+codex plugin marketplace add RetMnit/dsh-subagent --ref v0.5.5
 codex plugin add dsh-subagent@dsh-subagent-tools
 ```
 
@@ -19,6 +19,16 @@ codex plugin add dsh-subagent@dsh-subagent-tools
 新机器默认工作区是用户目录下的 `DSH-Workspace`，会自动创建。想用其他目录，在 setup 前设置 `$env:CODEX_DSH_WORKSPACE`，例如 `C:\Agents\DSH`；已有安装再次运行 setup 会保留原工作区。新建任务默认完全权限，可在首次参数表中修改。
 
 安装后完全退出并重新打开 DSH Desktop，使 DSH 端插件加载；再新开 Codex 会话，说“打开 DSH 子智能体参数配置，先不要执行任务”。安装、配置和检查不会发送模型任务。
+
+已有 GitHub 安装升级时，先在源码目录切到 `v0.5.5` 并运行上述 setup，再切换 Codex 的固定标签：
+
+```powershell
+codex plugin marketplace remove dsh-subagent-tools
+codex plugin marketplace add RetMnit/dsh-subagent --ref v0.5.5
+codex plugin add dsh-subagent@dsh-subagent-tools
+```
+
+更新保留工作区、token、会话配置和历史记录，并在改写前备份桥接配置与 DSH profile。DSH 端桥接版本为 `0.2.1`；DSH `0.2.1-rc.1` 的已验证构建是 `ed75efeffee65f9fe93625bbd76a68cb219aaaf9`。续聊直接恢复原 session，不使用新版只复用空白会话的创建接口。
 
 仓库仅包含源码，不包含 API 密钥、模型账号、自定义 preset、会话或运行缓存。新机器使用自己的 DSH 配置，不要直接复制旧机器的 `config.json`、运行目录或浏览器 profile。
 
@@ -64,7 +74,9 @@ Codex 工具返回只保留一份 JSON：list 按 subagent 返回摘要及旧轮
 node server/setup.mjs --install-dsh
 ```
 
-安装器将 DSH 插件放入 `~/.dsh/bundles/codex-dsh-bridge` 并备份 profile。运行记录在应用数据目录，不依赖项目工作区。更新时增加版本并刷新 Codex 安装；DSH 组件更新后在空闲时让 DSH 重载。当前适配 DSH `0.2.0-rc.2`，未知升级需验证后适配。
+安装器将 DSH 插件放入 `~/.dsh/bundles/codex-dsh-bridge` 并备份 profile。运行记录在应用数据目录，不依赖项目工作区。更新时增加版本并刷新 Codex 安装；DSH 组件更新后在空闲时让 DSH 重载。当前适配 DSH `0.2.1-rc.1`，未知升级需验证后适配。
+
+普通回归运行 `node --test tests/*.test.mjs`。真实 DSH Host 验收使用 `$env:DSH_INSTALL_DIR` 指定安装目录后运行 `node tests/acceptance.mjs`；它创建隔离 home、profile、会话和本地假模型，验证新会话及 Host 重启后原 session 的续聊，完成后删除自身临时目录，不使用现有账号或真实模型。
 
 `npm test` 使用假模型验证配置复用、并发、任务隔离、重试和状态窗口链路。真实验收需要用户授权。已结束 Codex 回合的自动唤醒仍未实现。
 

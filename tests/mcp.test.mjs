@@ -15,7 +15,7 @@ test('MCP handshake, discovery and harmless doctor round-trip', async () => {
     response.setHeader('content-type','application/json');
     if(request.url==='/health')return response.end(JSON.stringify({instanceId}));
     let body='';for await(const chunk of request)body+=chunk;const call=JSON.parse(body);assert.equal(call.method,'doctor');
-    response.end(JSON.stringify({result:{runtime:{version:'0.2.0-rc.2'}}}));
+    response.end(JSON.stringify({result:{runtime:{version:'0.2.1-rc.1'}}}));
   });await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   fs.writeFileSync(path.join(state,'config.json'),JSON.stringify({token}));
   fs.writeFileSync(path.join(state,'supervisor.json'),JSON.stringify({instanceId,url:'http://127.0.0.1:'+server.address().port}));
@@ -39,7 +39,7 @@ test('MCP handshake, discovery and harmless doctor round-trip', async () => {
     assert.ok(!catalog.result.tools.some(tool=>tool.name==='dsh_prepare'));
     const doctor=await call('tools/call',{name:'dsh_doctor',arguments:{}}); assert.equal(doctor.result.isError,undefined);
     assert.equal(doctor.result.structuredContent,undefined);assert.equal(doctor.result.content.length,1);
-    assert.equal(JSON.parse(doctor.result.content[0].text).runtime.version,'0.2.0-rc.2');
+    assert.equal(JSON.parse(doctor.result.content[0].text).runtime.version,'0.2.1-rc.1');
     const absent=await call('tools/call',{name:'dsh_start',arguments:{}}); assert.ok(absent.error); assert.match(absent.error.message,/Missing required/);
     const legacy=await call('tools/call',{name:'dsh_configure',arguments:{conversationId:'chat-A',createNew:true}});assert.match(legacy.error.message,/Unknown argument/);
     assert.equal(stderr,'');

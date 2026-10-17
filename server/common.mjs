@@ -71,8 +71,8 @@ export function discoverRuntime(installDir) {
   const executable = path.join(installDir, 'DeepSeek Harness.exe');
   const archive = path.join(installDir, 'resources/app.asar');
   const desktop = JSON.parse(readAsar(archive, 'package.json'));
-  if (desktop.name !== '@deepseek-ai/dsh-desktop' || desktop.version !== '0.2.0-rc.2') throw new Error('Unsupported DSH installation: ' + desktop.version);
-  if (desktop.dshBuildCommit !== '04f392c9ddd144fa426da2045178797da6db6c11') throw new Error('DSH build changed; validate and update the compatibility adapter before dispatch');
+  if (desktop.name !== '@deepseek-ai/dsh-desktop' || desktop.version !== '0.2.1-rc.1') throw new Error('Unsupported DSH installation: ' + desktop.version);
+  if (desktop.dshBuildCommit !== 'ed75efeffee65f9fe93625bbd76a68cb219aaaf9') throw new Error('DSH build changed; validate and update the compatibility adapter before dispatch');
   if (!fs.existsSync(executable)) throw new Error('DSH executable not found');
   return { installDir, executable, cli: path.join(archive, 'dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js'), version: desktop.version, buildCommit: desktop.dshBuildCommit };
 }

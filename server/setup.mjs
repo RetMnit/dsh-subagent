@@ -17,6 +17,12 @@ if (process.platform === 'win32' && !process.env.CODEX_DSH_STATE_DIR) {
 }
 const settingsPath = path.join(STATE, 'config.json');
 const old = fs.existsSync(settingsPath) ? readJson(settingsPath) : {};
+const stamp = new Date().toISOString().replaceAll(/[:.]/g, '-') + '-' + randomBytes(4).toString('hex');
+const backup = path.join(STATE, 'backups', stamp);
+if (fs.existsSync(settingsPath)) {
+  fs.mkdirSync(backup, { recursive: true });
+  fs.copyFileSync(settingsPath, path.join(backup, 'config.json'));
+}
 const workspace = path.resolve(process.env.CODEX_DSH_WORKSPACE || old.defaults?.workspace || path.join(os.homedir(), 'DSH-Workspace'));
 fs.mkdirSync(workspace, {recursive: true});
 const settings = { ...old, protocolVersion: 1, runtime, home, workerProfile: 'codex-worker', sourceRoot: ROOT,
@@ -27,8 +33,6 @@ const settings = { ...old, protocolVersion: 1, runtime, home, workerProfile: 'co
 atomic(settingsPath, settings);
 if (!process.argv.includes('--install-dsh')) { console.log(JSON.stringify({ configured: true, stateDir: STATE, version: runtime.version })); process.exit(0); }
 fs.cpSync(path.join(ROOT, 'companion'), companionDir, {recursive: true});
-const stamp = new Date().toISOString().replaceAll(/[:.]/g, '-');
-const backup = path.join(STATE, 'backups', stamp);
 for (const profile of ['desktop', settings.workerProfile]) {
   for (const file of ['package.json', 'cordis.patch.yml', 'cordis.yml', 'pnpm-lock.yaml', 'pnpm-workspace.yaml']) {
     const from = path.join(home, 'profiles', profile, file);
