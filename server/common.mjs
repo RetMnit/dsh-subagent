@@ -4,6 +4,7 @@ import os from 'node:os';
 import net from 'node:net';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { verifyRuntimeCompatibility } from '../companion/compatibility.mjs';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const STATE = process.env.CODEX_DSH_STATE_DIR || path.join(process.env.LOCALAPPDATA || os.homedir(), 'CodexDSHBridge');
@@ -71,8 +72,7 @@ export function discoverRuntime(installDir) {
   const executable = path.join(installDir, 'DeepSeek Harness.exe');
   const archive = path.join(installDir, 'resources/app.asar');
   const desktop = JSON.parse(readAsar(archive, 'package.json'));
-  if (desktop.name !== '@deepseek-ai/dsh-desktop' || desktop.version !== '0.2.1-rc.1') throw new Error('Unsupported DSH installation: ' + desktop.version);
-  if (desktop.dshBuildCommit !== 'ed75efeffee65f9fe93625bbd76a68cb219aaaf9') throw new Error('DSH build changed; validate and update the compatibility adapter before dispatch');
+  const compatibility = verifyRuntimeCompatibility(desktop, file => readAsar(archive, 'dsh/node_modules/' + file));
   if (!fs.existsSync(executable)) throw new Error('DSH executable not found');
-  return { installDir, executable, cli: path.join(archive, 'dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js'), version: desktop.version, buildCommit: desktop.dshBuildCommit };
+  return { installDir, executable, cli: path.join(archive, 'dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js'), version: desktop.version, buildCommit: desktop.dshBuildCommit, compatibility };
 }

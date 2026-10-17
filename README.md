@@ -4,13 +4,13 @@
 
 ## 安装到新机器
 
-需要 Windows、Node.js 22+、Git、Codex 和 DSH Desktop。当前仅适配 DSH `0.2.1-rc.1` 的已验证构建；版本或构建不匹配会停止派发。先在 DSH 中完成自己的模型登录和 preset 配置。
+需要 Windows、Node.js 22+、Git、Codex 和 DSH Desktop。当前适配 DSH `0.2.1-rc.1` 起的 `0.2.x` 系列，通过已验收构建、关键实现指纹和运行时接口检查判断兼容性。先在 DSH 中完成自己的模型登录和 preset 配置。
 
 ```powershell
-git clone --branch v0.5.6 https://github.com/RetMnit/dsh-subagent.git
+git clone https://github.com/RetMnit/dsh-subagent.git
 cd dsh-subagent
 node server/setup.mjs --install-dsh
-codex plugin marketplace add RetMnit/dsh-subagent --ref v0.5.6
+codex plugin marketplace add RetMnit/dsh-subagent --ref main
 codex plugin add dsh-subagent@dsh-subagent-tools
 ```
 
@@ -20,15 +20,26 @@ codex plugin add dsh-subagent@dsh-subagent-tools
 
 安装后完全退出并重新打开 DSH Desktop，使 DSH 端插件加载；再新开 Codex 会话，说“打开 DSH 子智能体参数配置，先不要执行任务”。安装、配置和检查不会发送模型任务。
 
-已有 GitHub 安装升级时，先在源码目录切到 `v0.5.6` 并运行上述 setup，再切换 Codex 的固定标签：
+仓库跟随 `main` 发布，不创建新的 Git tag 或 GitHub Release。已有固定标签安装首次迁移到 `main`：
 
 ```powershell
 codex plugin marketplace remove dsh-subagent-tools
-codex plugin marketplace add RetMnit/dsh-subagent --ref v0.5.6
+codex plugin marketplace add RetMnit/dsh-subagent --ref main
 codex plugin add dsh-subagent@dsh-subagent-tools
 ```
 
-更新保留工作区、token、会话配置和历史记录，并在改写前备份桥接配置与 DSH profile。DSH 端桥接版本为 `0.2.1`；DSH `0.2.1-rc.1` 的已验证构建是 `ed75efeffee65f9fe93625bbd76a68cb219aaaf9`。续聊直接恢复原 session，不使用新版只复用空白会话的创建接口。
+后续升级，在源码 `main` 分支执行 `git pull --ff-only` 和 `node server/setup.mjs --install-dsh`，再执行 `codex plugin marketplace upgrade dsh-subagent-tools`、`codex plugin add dsh-subagent@dsh-subagent-tools`。内部插件版本号仍递增，以便 Codex 刷新缓存。
+
+更新保留工作区、token、会话配置和历史记录，并在改写前备份桥接配置与 DSH profile。DSH 端桥接版本为 `0.3.0`。续聊直接恢复原 session，不使用新版只复用空白会话的创建接口。
+
+## 兼容性判断
+
+- DSH 插件管理器读取 `peerDependencies` 范围 `>=0.2.1-rc.1 <0.3.0-0`，不再精确锁定一个 rc 版本。
+- 已验收的 `0.2.1-rc.1` 和 `rc.2` 构建直接通过安装检查。其他同系列构建在启动 Host 或派发前比对 12 个关键模块的 SHA-256，覆盖会话控制、agent/循环、会话查询与投影、模型、preset、权限、工作区和导航；所选实现完全一致时可以继续使用，无需为无关小更新重发插件。
+- 桥接加载时检查实际用到的服务与方法。缺少恢复、模型选择等接口时直接报出缺失项，不执行任务。
+- 关键代码变化或超出适配系列时仍停止派发，先运行隔离假模型验收并审查接口变化，再更新 `companion/compatibility.json`。指纹仅覆盖所选模块；它和方法存在性检查不能证明所有依赖或行为都兼容。
+
+已验证构建及代码指纹集中在 `companion/compatibility.json`。这项机制不会自动调用真实模型，也不会在更新后自动启动任务。
 
 仓库仅包含源码，不包含 API 密钥、模型账号、自定义 preset、会话或运行缓存。新机器使用自己的 DSH 配置，不要直接复制旧机器的 `config.json`、运行目录或浏览器 profile。
 
@@ -74,12 +85,12 @@ Codex 工具返回只保留一份 JSON：list 按 subagent 返回摘要及旧轮
 node server/setup.mjs --install-dsh
 ```
 
-安装器将 DSH 插件放入 `~/.dsh/bundles/codex-dsh-bridge` 并备份 profile。运行记录在应用数据目录，不依赖项目工作区。更新时增加版本并刷新 Codex 安装；DSH 组件更新后在空闲时让 DSH 重载。当前适配 DSH `0.2.1-rc.1`，未知升级需验证后适配。
+安装器将 DSH 插件放入 `~/.dsh/bundles/codex-dsh-bridge` 并备份 profile。运行记录在应用数据目录，不依赖项目工作区。更新时增加版本并刷新 Codex 安装；DSH 组件更新后在空闲时让 DSH 重载。兼容性检查失败时先验证接口变化，再更新适配。
 
 普通回归运行 `node --test tests/*.test.mjs`。真实 DSH Host 验收使用 `$env:DSH_INSTALL_DIR` 指定安装目录后运行 `node tests/acceptance.mjs`；它创建隔离 home、profile、会话和本地假模型，验证新会话及 Host 重启后原 session 的续聊，完成后删除自身临时目录，不使用现有账号或真实模型。
 
 `npm test` 使用假模型验证配置复用、并发、任务隔离、重试和状态窗口链路。真实验收需要用户授权。已结束 Codex 回合的自动唤醒仍未实现。
 
-测试使用临时目录、模拟 Host 和合成运行时，不依赖本机 DSH 安装或私人配置，不调用 DSH 模型。更新版本时发布新 Git 标签，再将新机器的 marketplace 固定到新标签。
+普通测试使用临时目录、模拟 Host 和合成运行时，不依赖本机 DSH 安装或私人配置，不调用 DSH 模型。更新提交到 `main`，不创建新的 Git 标签或 Release。
 
 交互记录会自动清理，整个运行目录没有总容量上限，也不监听 Codex 会话删除。日志、备份、配置及去重标记保留；`sessions`/`storages` 是后台 DSH 原始数据。需要释放空间时，关闭所有状态窗口后可删除 `%LOCALAPPDATA%\CodexDSHBridge\status-window-profile`，之后会自动重建；Edge 组件可能重新下载。不要手动零散删除运行 JSON 文件。

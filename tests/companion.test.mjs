@@ -151,8 +151,14 @@ test('companion lifecycle, idempotency, cancellation, preset ownership and authe
       assert.equal((await call('status',{jobId:two.jobId})).status,'running');
       await call('cancel',{jobId:two.jobId});await settled(two.jobId);
     });
+    await t.test('a missing resume capability refuses startup before IPC opens', async () => {
+      const resolveAgent = ctx.sessionController.agents.resolveAgent;
+      delete ctx.sessionController.agents.resolveAgent;
+      try { await assert.rejects(apply(ctx), /Missing DSH adapter capabilities:.*resolveAgent/); }
+      finally { ctx.sessionController.agents.resolveAgent = resolveAgent; }
+    });
     await t.test('unknown DSH version refuses startup', async () => {
-      fs.writeFileSync(manifest, JSON.stringify({ version: '0.3.0' })); await assert.rejects(apply(ctx), /supports 0.2.1-rc.1/);
+      fs.writeFileSync(manifest, JSON.stringify({ version: '0.3.0' })); await assert.rejects(apply(ctx), /Unsupported DSH installation/);
     });
     assert.equal(globalSaves, 0);
   } finally {

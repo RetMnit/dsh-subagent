@@ -92,6 +92,11 @@ test('one saved configuration starts a concurrent batch, shows every task, dedup
     const events=await fetch(info.url+'/events?conversationId=chat-A',{headers:{authorization:'Bearer '+token}});const reader=events.body.getReader();const first=await reader.read();
     const eventText=new TextDecoder().decode(first.value);assert.match(eventText,/fake-/);assert.ok(!eventText.includes(other.jobId));await reader.cancel();
     assert.equal((await fetch(info.url+'/events',{headers:{authorization:'Bearer '+token}})).status,400);
+    // A connected Host must not bypass the current installation preflight.
+    fakeConfig(root, { dshBuildCommit: 'changed-after-host-start' });
+    const changedRuntime = await call('sessions', { mode: 'desktop' });
+    assert.match(changedRuntime.error.message, /adapter code changed/);
+    assert.equal(dispatches, 5);
   }finally{
     clearInterval(heartbeat);
     child.kill();for(const socket of sockets)socket.destroy();for(const server of servers)server.close();await new Promise(resolve=>setTimeout(resolve,80));

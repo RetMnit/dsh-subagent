@@ -5,11 +5,11 @@ import os from 'node:os';
 import { randomUUID, timingSafeEqual, createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { EventEmitter } from 'node:events';
+import { assertSupportedVersion, assertHostCapabilities } from './compatibility.mjs';
 
 export const name = 'codex-dsh-bridge';
 export const inject = ['agents', 'sessions', 'sessionController', 'sessionQuery', 'sessionProjections',
   'agentPresets', 'agentDefaultModel', 'permissionPresets', 'workspaceRegistry', 'llm', 'connection'];
-const VERSION = '0.2.1-rc.1';
 const terminal = new Set(['completed', 'failed', 'cancelled', 'interrupted']);
 const now = () => new Date().toISOString();
 const errorOf = error => ({ code: error?.code ?? 'bridge/error', message: error?.message ?? String(error) });
@@ -44,11 +44,9 @@ export async function apply(ctx) {
   const mode = ctx.profileContext.name === 'desktop' ? 'desktop' : 'headless';
   const requireFromDsh = createRequire(ctx.profileContext.installAnchor);
   const manifest = JSON.parse(fs.readFileSync(requireFromDsh.resolve('@deepseek-ai/dsh/package.json'), 'utf8'));
-  if (manifest.version !== VERSION) throw new Error(`Codex DSH bridge supports ${VERSION}, found ${manifest.version}`);
+  assertSupportedVersion(manifest.version);
+  assertHostCapabilities(ctx);
   const controller = ctx.sessionController;
-  for (const method of ['create', 'prompt', 'cancel', 'rename']) if (typeof controller[method] !== 'function') throw new Error('Missing sessionController.' + method);
-  if (typeof controller.agents?.selectForNextRequest !== 'function') throw new Error('Missing pinned model-selection adapter');
-  if (typeof controller.agents?.resolveAgent !== 'function') throw new Error('Missing pinned session-resume adapter');
   const pipe = settings.pipes[mode];
   const instanceId = randomUUID();
   const jobs = new Map();
@@ -259,7 +257,7 @@ export async function apply(ctx) {
     return publicJob(job);
   };
   const methods = {
-    doctor: async () => ({ protocolVersion: 1, bridgeVersion: '0.2.1', dshVersion: manifest.version, mode, pid: process.pid, instanceId,
+    doctor: async () => ({ protocolVersion: 1, bridgeVersion: '0.3.0', dshVersion: manifest.version, mode, pid: process.pid, instanceId,
       profile: ctx.profileContext.name, navigationAck, capabilities: ['presets', 'resume', 'session-model', 'permissions', 'events', 'cancel', 'concurrent-sessions', ...(mode === 'desktop' ? ['desktop-navigation'] : [])] }),
     catalog: async () => ({ presets: await ctx.agentPresets.remoteExportList(), models: await controller.modelCatalog(),
       permissions: ctx.permissionPresets.catalog(), workspaces: ctx.workspaceRegistry.list().map(item => ({ workspaceId: item.id, path: item.path, title: item.title })) }),

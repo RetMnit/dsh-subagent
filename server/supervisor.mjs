@@ -84,6 +84,7 @@ function startProcess(mode) {
 }
 async function ensure(mode) {
   if (!['desktop', 'headless'].includes(mode)) throw new Error('mode must be desktop or headless');
+  discoverRuntime(cfg.runtime.installDir);
   try { const result = await pipeCall(mode, 'doctor', {}, 2000); void monitor(mode); return result; } catch (error) {
     if (!['ENOENT', 'ECONNREFUSED'].includes(error.code)) throw error;
   }
@@ -140,7 +141,7 @@ const methods = {
     for (const mode of ['desktop', 'headless']) {
       try { states[mode] = await pipeCall(mode, 'doctor', {}, 2000); } catch (error) { states[mode] = { connected: false, error: error.code ?? error.message }; }
     }
-    return { version: '0.5.6', runtime: discoverRuntime(cfg.runtime.installDir), defaults: cfg.defaults, providers: states,
+    return { version: '0.6.0', runtime: discoverRuntime(cfg.runtime.installDir), defaults: cfg.defaults, providers: states,
       ...(params.conversationId ? {dashboardUrl: dashboardUrl(conversationId(params)), panel: getPanel(params.conversationId).status()} : {}), retention: records.status(), callback: { activeWait: true, idleCodexWakeup: 'not-supported-or-verified' } };
   },
   configure: async params => { const entry = configurations.create(params); return {...entry, url: baseUrl + '/?conversationId=' + encodeURIComponent(entry.conversationId) + '&configure=' + entry.configurationId + '#' + cfg.token}; },

@@ -1,9 +1,9 @@
 {
   "name": "@local/codex-dsh-bridge",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Local Codex task bridge for DSH 0.2.1-rc.1",
+  "description": "Local Codex task bridge with DSH capability and implementation checks",
   "main": "./index.mjs",
   "exports": {
     ".": "./index.mjs",
@@ -22,7 +22,7 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh": "0.2.1-rc.1"
+    "@deepseek-ai/dsh": ">=0.2.1-rc.1 <0.3.0-0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh": {
