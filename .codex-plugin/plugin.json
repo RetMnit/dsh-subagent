@@ -1,6 +1,6 @@
 {
   "name": "dsh-subagent",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Delegate tasks to local DSH Desktop or hidden CLI with exact presets and tracked completion.",
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
