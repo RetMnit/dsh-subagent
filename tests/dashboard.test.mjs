@@ -7,10 +7,10 @@ import {groupSubagents} from '../server/subagents.mjs';
 test('dashboard renders all independent tasks and reports actual DOM results without dispatching', async () => {
   const elements=new Map();const requests=[];
   const element=tag=>({tag,textContent:'',dataset:{},children:[],append(...items){this.children.push(...items)},replaceChildren(){this.children=[]}});
-  const document={hidden:false,createElement:element,getElementById:id=>{if(!elements.has(id))elements.set(id,element('div'));return elements.get(id)},addEventListener(){}};
+  const document={hidden:false,createElement:element,getElementById:id=>{if(!elements.has(id))elements.set(id,element('div'));return elements.get(id)},addEventListener(name,fn){handlers[name]=fn}};
   const handlers={};
-  const context={window:{addEventListener(name,fn){handlers[name]=fn}},document,location:{hash:'#private',pathname:'/',search:'?conversationId=chat-A'},sessionStorage:{getItem(){return ''},setItem(){}},history:{replaceState(){}},crypto:{randomUUID:()=> 'fake-window'},URLSearchParams,TextDecoder,encodeURIComponent,setInterval(){},setTimeout,
-    fetch:async(url,options)=>{if(url.startsWith('/events'))return new Promise(()=>{});requests.push(JSON.parse(options.body));return{json:async()=>({result:{accepted:true}})}}};
+  const context={window:{addEventListener(name,fn){handlers[name]=fn}},document,location:{hash:'#private',pathname:'/',search:'?conversationId=chat-A'},sessionStorage:{getItem(){return ''},setItem(){}},history:{replaceState(){}},crypto:{randomUUID:()=> 'fake-window'},URLSearchParams,TextDecoder,AbortController,encodeURIComponent,setInterval(){},setTimeout,
+    fetch:async(url,options)=>{if(url.startsWith('/events'))return new Promise(()=>{});const request=JSON.parse(options.body);requests.push(request);return{json:async()=>({result:request.method==='list'?context.testData:{accepted:true}})}}};
   document.querySelector=()=>({textContent:''});
   vm.runInNewContext(fs.readFileSync(new URL('../ui/dashboard.js',import.meta.url),'utf8'),context);
   const jobs=[1,2].map(number=>({jobId:'job-'+number,sessionId:'session-'+number,title:'任务 '+number,status:'completed',mode:'desktop',createdAt:new Date(number*1000).toISOString(),finishedAt:new Date(number*1000).toISOString(),promptSummary:'只回复 '+number,result:String(number)}));
@@ -38,6 +38,20 @@ test('dashboard renders all independent tasks and reports actual DOM results wit
     if(status!=='completed')assert.match(elements.get('providers').textContent,/1 项进行中 · 1 项已完成/);
   }
   context.testData={conversationId:'chat-B',providers:{},jobs:[]};vm.runInNewContext('draw(testData)',context);assert.equal(elements.get('jobs').children.length,2);
+  // Browser timers did not run in the background. A foreground event fetches
+  // authoritative completed state without waiting for the existing SSE reader.
+  const finalJobs=jobs.map(job=>({...job,result:'latest '+job.result}));
+  context.testData={conversationId:'chat-A',providers:{},jobs:finalJobs,subagents:groupSubagents(finalJobs)};
+  document.hidden=true;handlers.visibilitychange();assert.equal(requests.some(r=>r.method==='list'),false);
+  document.hidden=false;handlers.visibilitychange();
+  for(let i=0;i<10;i++)await Promise.resolve();
+  assert.equal(requests.filter(r=>r.method==='list').length,1);
+  assert.ok(elements.get('jobs').children.every(card=>card.children.find(child=>child.className==='result').textContent.startsWith('latest')));
+  context.testData={...context.testData,instanceId:'server',cursor:8};vm.runInNewContext('draw(testData)',context);
+  context.testData={conversationId:'chat-A',instanceId:'server',cursor:7,providers:{},jobs,subagents:groupSubagents(jobs)};vm.runInNewContext('draw(testData)',context);
+  assert.ok(elements.get('jobs').children.every(card=>card.children.find(child=>child.className==='result').textContent.startsWith('latest')),'queued stale SSE frames cannot roll back foreground snapshot');
+  handlers.focus();for(let i=0;i<10;i++)await Promise.resolve();assert.equal(requests.filter(r=>r.method==='list').length,2);
+  assert.ok(!requests.some(r=>/start|resume|saveConfiguration/.test(r.method)));
   handlers.pagehide();assert.ok(requests.some(request=>request.method==='panelHeartbeat'&&request.params.closed===true&&request.params.conversationId==='chat-A'));
 });
 

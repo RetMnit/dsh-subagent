@@ -7,7 +7,7 @@ import {statusPanel, findStatusWindow} from '../server/panel.mjs';
 const conversationId=process.env.CODEX_THREAD_ID || process.env.CODEX_SESSION_ID;
 if(!conversationId)throw new Error('Current Codex conversation ID is required');
 const doctor=await api('doctor',{conversationId});
-assert.equal(doctor.version,'0.6.1','Restart the idle supervisor from this source before live acceptance');
+assert.equal(doctor.version,'0.6.2','Restart the idle supervisor from this source before live acceptance');
 await api('open',{conversationId,dashboard:true});
 const existing=await findStatusWindow(doctor.dashboardUrl,STATE);
 assert.equal(existing.exists,true,'real Edge app belongs to this conversation');
@@ -17,7 +17,10 @@ let launches=0;
 for(let i=0;i<2;i++) {
   const panel=statusPanel({url:()=>doctor.dashboardUrl,state:STATE,timeoutMs:30,
     launch:async()=>{launches++;throw new Error('Unexpected duplicate window');}});
-  await assert.rejects(panel.ensure(),/existing status window is not responding/);
+  const status=await panel.ensure();
+  assert.equal(status.display,'background');assert.equal(status.connected,false);
+  const receipt=await panel.rendered(['not-rendered']);
+  assert.equal(receipt.jobsRendered,false);assert.equal(receipt.renderPending,true);
   assert.equal(panel.status().launches,0);
   assert.equal(panel.status().reuses,1);
 }

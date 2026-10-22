@@ -1,7 +1,7 @@
 import {terminal} from './common.mjs';
 
 const pick = (value, keys) => Object.fromEntries(keys.filter(key => value?.[key] !== undefined).map(key => [key, value[key]]));
-const panelSummary = panel => panel && pick(panel, ['connected', 'visible', 'jobsRendered', 'lastError']);
+const panelSummary = panel => panel && pick(panel, ['connected', 'visible', 'windowPresent', 'display', 'jobsRendered', 'renderPending', 'lastError']);
 const settingsSummary = settings => settings && pick(settings, ['workspace', 'preset', 'model', 'permission']);
 
 function jobSummary(job, {answer = false, details = false, request = false} = {}) {

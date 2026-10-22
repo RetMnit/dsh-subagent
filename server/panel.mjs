@@ -61,9 +61,9 @@ export async function launchStatusWindow(url, state) {
   return {pid: child.pid};
 }
 
-export function statusPanel({url, state, launch = launchStatusWindow, findWindow = findStatusWindow, clock = Date.now, timeoutMs = 15000}) {
+export function statusPanel({url, state, launch = launchStatusWindow, findWindow = findStatusWindow, clock = Date.now, timeoutMs = 1000, refresh = () => {}}) {
   const clients = new Map(); const changes = new EventEmitter(); changes.setMaxListeners(100);
-  let pending; let launches = 0; let reuses = 0; let lastError;
+  let pending; let launches = 0; let reuses = 0; let lastError; let windowPresent = null; let lastReceiptAt = null;
   const live = () => [...clients.values()].filter(client => clock() - client.seenAt < 6500);
   const visible = () => live().some(client => client.visible);
   const changed = ms => new Promise(resolve => {
@@ -74,35 +74,52 @@ export function statusPanel({url, state, launch = launchStatusWindow, findWindow
     heartbeat(params) {
       if (typeof params.clientId !== 'string' || params.clientId.length > 100 || !Array.isArray(params.jobs)) throw new Error('Invalid panel receipt');
       if (params.closed) clients.delete(params.clientId);
-      else clients.set(params.clientId, {seenAt: clock(), visible: params.visible === true, windowMode: params.windowMode === true, jobs: params.jobs.slice(0, 500).map(job => ({jobId: job.jobId, status: job.status, hasResult: job.hasResult === true}))});
+      else {
+        lastReceiptAt = clock();
+        if (params.windowMode === true) windowPresent = true;
+        lastError = undefined;
+        clients.set(params.clientId, {seenAt: lastReceiptAt, visible: params.visible === true, windowMode: params.windowMode === true, jobs: params.jobs.slice(0, 500).map(job => ({jobId: job.jobId, status: job.status, hasResult: job.hasResult === true}))});
+      }
       changes.emit('change'); return {accepted: true};
     },
-    status() {return {connected: live().length > 0, visible: visible(), launches, reuses, lastError, renderedJobs: live().flatMap(client => client.jobs)}},
+    status() {return {connected: live().length > 0, visible: visible(), windowPresent, lastReceiptAt,
+      display: lastError ? 'unavailable' : live().length ? 'live' : windowPresent ? 'background' : 'pending',
+      launches, reuses, lastError, renderedJobs: live().flatMap(client => client.jobs)}},
     async ensure() {
       if (visible() || live().some(client => client.windowMode)) return this.status();
       if (!pending) pending = (async () => {
         const existing = await findWindow(url(), state);
+        windowPresent = existing.exists;
         if (existing.exists) {
           reuses++;
-          if (!existing.originMatches) throw new Error('The existing status window belongs to an old service address. Close that window and reopen it; no duplicate window was opened and no task was started');
+          if (!existing.originMatches) throw new Error('Status window uses an old service address; display unavailable. Task execution is unaffected; no duplicate window was opened');
+          // Browser scheduling is not a task-execution permission. A verified
+          // owned window may be frozen or throttled while minimized. Reuse it
+          // immediately and request a snapshot, without inventing a render ack.
+          lastError = undefined;
+          refresh();
+          return this.status();
         } else {
           launches++; await launch(url(), state);
+          windowPresent = null; // A process launch is not proof of a rendered window.
         }
         const deadline = clock() + timeoutMs;
         const acknowledged = () => visible() || live().some(client => client.windowMode);
         while (!acknowledged() && clock() < deadline) await changed(Math.min(500, deadline - clock()));
-        if (!acknowledged()) throw new Error(existing.exists
-          ? 'The existing status window is not responding. Restore or close it and retry; no duplicate window was opened and no task was started'
-          : 'The status window opened but did not acknowledge rendering; no task was started');
+        // Initial rendering is best effort too. A missing receipt is exposed in
+        // status, never treated as a failed/unknown model submission.
         lastError = undefined; return this.status();
-      })().catch(error => {lastError = error.message; throw error}).finally(() => {pending = undefined});
+      })().catch(error => {lastError = error.message; return this.status()}).finally(() => {pending = undefined});
       return pending;
     },
-    async rendered(jobIds, timeout = 4000) {
+    async rendered(jobIds, timeout = 1000) {
       const deadline = clock() + timeout;
       const has = () => jobIds.every(id => live().some(client => client.jobs.some(job => job.jobId === id)));
-      while (!has() && clock() < deadline) await changed(Math.min(300, deadline - clock()));
-      return {...this.status(), jobsRendered: has()};
+      refresh();
+      // A background page can catch up on its next network/foreground event.
+      // Never wait for a suspended JS timer or claim unseen jobs were rendered.
+      while (!has() && live().length && clock() < deadline) await changed(Math.min(100, deadline - clock()));
+      return {...this.status(), jobsRendered: has(), renderPending: !has()};
     },
   };
 }

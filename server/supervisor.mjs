@@ -132,7 +132,12 @@ const panels = new Map();
 const dashboardUrl = id => baseUrl + '/?conversationId=' + encodeURIComponent(id) + '#' + cfg.token;
 function getPanel(id) {
   conversationId({conversationId:id});
-  if (!panels.has(id)) panels.set(id,statusPanel({url: () => dashboardUrl(id), state: STATE}));
+  if (!panels.has(id)) panels.set(id,statusPanel({url: () => dashboardUrl(id), state: STATE, refresh: () => {
+    // Send data now rather than waiting for a background browser timer. This
+    // does not create a heartbeat or pretend that the browser has drawn it.
+    for (const stream of streams) if (stream.conversationId === id)
+      if (!stream.response.write('data: ' + JSON.stringify(snapshot(id)) + '\n\n')) stream.response.destroy();
+  }}));
   return panels.get(id);
 }
 const methods = {
@@ -141,7 +146,7 @@ const methods = {
     for (const mode of ['desktop', 'headless']) {
       try { states[mode] = await pipeCall(mode, 'doctor', {}, 2000); } catch (error) { states[mode] = { connected: false, error: error.code ?? error.message }; }
     }
-    return { version: '0.6.1', runtime: discoverRuntime(cfg.runtime.installDir), defaults: cfg.defaults, providers: states,
+    return { version: '0.6.2', runtime: discoverRuntime(cfg.runtime.installDir), defaults: cfg.defaults, providers: states,
       ...(params.conversationId ? {dashboardUrl: dashboardUrl(conversationId(params)), panel: getPanel(params.conversationId).status()} : {}), retention: records.status(), callback: { activeWait: true, idleCodexWakeup: 'not-supported-or-verified' } };
   },
   configure: async params => { const entry = configurations.create(params); return {...entry, url: baseUrl + '/?conversationId=' + encodeURIComponent(entry.conversationId) + '&configure=' + entry.configurationId + '#' + cfg.token}; },

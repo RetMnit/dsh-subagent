@@ -9,6 +9,8 @@ const labels = {starting:'准备中',running:'运行中','waiting-user':'等待�
 const el = (tag, text, className) => {const item=document.createElement(tag);if(text!==undefined)item.textContent=text;if(className)item.className=className;return item};
 const byId = id => document.getElementById(id);
 let renderedJobs = [];
+let streamController;
+let drawnInstance;let drawnCursor=-1;
 async function call(method, params, keepalive = false) {
   const response = await fetch('/api', {method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({method,params:{...params,...(conversationId?{conversationId}:{})}}),keepalive});
   const reply=await response.json();if(reply.error)throw new Error(reply.error.message);return reply.result;
@@ -18,6 +20,10 @@ async function heartbeat() {
 }
 function draw(data) {
   if (data.conversationId !== conversationId) return;
+  if(data.instanceId&&Number.isInteger(data.cursor)) {
+    if(data.instanceId===drawnInstance&&data.cursor<drawnCursor)return;
+    drawnInstance=data.instanceId;drawnCursor=data.cursor;
+  }
   byId('connection').textContent='实时连接';
   const subagents=data.subagents||[];
   const active=subagents.filter(job=>['starting','running','waiting-user','waiting-approval'].includes(job.status)).length;
@@ -68,11 +74,19 @@ function draw(data) {
 }
 async function watch() {
   for(;;){try{
-    const response=await fetch('/events?conversationId='+encodeURIComponent(conversationId),{headers:{authorization:'Bearer '+token}});if(!response.ok)throw new Error('HTTP '+response.status);
+    streamController=new AbortController();
+    const response=await fetch('/events?conversationId='+encodeURIComponent(conversationId),{headers:{authorization:'Bearer '+token},signal:streamController.signal});if(!response.ok)throw new Error('HTTP '+response.status);
     const reader=response.body.getReader();const decoder=new TextDecoder();let buffer='';
     for(;;){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let cut;
-      while((cut=buffer.indexOf('\n\n'))>=0){const frame=buffer.slice(0,cut);buffer=buffer.slice(cut+2);if(frame.startsWith('data: '))draw(JSON.parse(frame.slice(6)))}}
+      while((cut=buffer.indexOf('\n\n'))>=0){const frame=buffer.slice(0,cut);buffer=buffer.slice(cut+2);if(frame.startsWith('data: '))draw(JSON.parse(frame.slice(6)));else if(frame.startsWith(':'))void heartbeat()}}
   }catch{byId('connection').textContent='连接中断 · 重试'}await new Promise(resolve=>setTimeout(resolve,1500))}
+}
+async function refreshPanel() {
+  // Background timers and streaming readers may be suspended by the browser.
+  // A foreground event always fetches a fresh authoritative snapshot and resets
+  // the stream, without starting/resuming tasks or changing configuration.
+  streamController?.abort();
+  try {draw(await call('list',{}))} catch {byId('connection').textContent='连接中断 · 重试'}
 }
 const configurationId=new URLSearchParams(location.search).get('configure');
 async function configure() {
@@ -98,6 +112,6 @@ async function configure() {
 }
 if(token) {
   if(configurationId)configure();
-  else if(conversationId){document.title='DSH Subagent · 当前会话';document.querySelector('header p').textContent='仅显示当前 Codex 会话的任务';void watch();setInterval(()=>void heartbeat(),1500);document.addEventListener('visibilitychange',()=>void heartbeat());window.addEventListener('pagehide',()=>void call('panelHeartbeat',{clientId,closed:true,jobs:[]},true).catch(()=>{}))}
+  else if(conversationId){document.title='DSH Subagent · 当前会话';document.querySelector('header p').textContent='仅显示当前 Codex 会话的任务';void watch();setInterval(()=>void heartbeat(),1500);document.addEventListener('visibilitychange',()=>{void heartbeat();if(!document.hidden)void refreshPanel()});window.addEventListener('focus',()=>void refreshPanel());window.addEventListener('pageshow',()=>void refreshPanel());window.addEventListener('pagehide',()=>void call('panelHeartbeat',{clientId,closed:true,jobs:[]},true).catch(()=>{}))}
   else {byId('connection').textContent='未指定 Codex 会话';byId('jobs').append(el('p','请让 Codex 重新打开当前会话的 DSH 状态窗口。'))}
 }else {byId('connection').textContent='需要访问凭据';byId('jobs').append(el('p','请从插件打开任务看板。'))}
