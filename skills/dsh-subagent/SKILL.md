@@ -21,3 +21,5 @@ description: Use only when the human explicitly permits DSH subagents, or asks t
 配置表与状态窗口由 Codex 端插件管理，DSH 子任务只处理实际工作。发给 DSH 的提示词无需附带“不重复配置/不开状态窗口”等管理提醒。
 
 已结束交互记录按 30 天、每聊天最多 100 条自动清理；运行和等待中的任务免除。只清理插件运行记录，保留 DSH 原会话、配置、项目文件及轻量去重标记。旧版无归属记录默认隐藏。
+
+本插件依赖先行安装的公共 dsh-bridge；诊断或连接失败时通过其安装回执与日志排查，不安装私有 DSH bundle、不改 DSH profile、不关闭共用后台 Host。Codex 自身记录保存在 `~/.codex/dsh-subagent`（可用 `CODEX_DSH_STATE_DIR` 覆盖），公共任务与 DSH 数据由 dsh-bridge 管理。

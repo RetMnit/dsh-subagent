@@ -1,47 +1,70 @@
 # DSH Subagent
 
-一个 Codex 插件，加一个 DSH 插件。支持 Desktop 新会话/续聊和后台 CLI、可复用配置、并行任务、自动状态窗口、结果与取消。
+Codex 的 DSH 子智能体插件：每会话参数表、并行任务、状态窗口、结果与取消。DSH 执行依赖公共 [dsh-bridge](https://github.com/RetMnit/dsh-bridge)，本插件通过安装回执加载其 Node 客户端，调用方固定为 `codex`。
 
-## 安装到新机器
+## 安装
 
-需要 Windows、Node.js 22+、Git、Codex 和 DSH Desktop。当前适配 DSH `0.2.1-rc.1` 起的 `0.2.x` 系列，通过已验收构建、关键实现指纹和运行时接口检查判断兼容性。先在 DSH 中完成自己的模型登录和 preset 配置。
+需要 Windows、Node.js 22+、Git、Codex、Microsoft Edge，以及公共 dsh-bridge 支持的 DSH Desktop。先在 DSH 中完成自己的模型登录和 preset 配置。
+
+先安装公共桥接 v0.4.0：
 
 ```powershell
-git clone https://github.com/RetMnit/dsh-subagent.git
-cd dsh-subagent
-node server/setup.mjs --install-dsh
-codex plugin marketplace add RetMnit/dsh-subagent --ref main
-codex plugin add dsh-subagent@dsh-subagent-tools
+git clone --branch v0.4.0 --depth 1 https://github.com/RetMnit/dsh-bridge.git
+cd dsh-bridge
+node setup.mjs
 ```
 
-安装器从 PATH 中的 `dsh.cmd` 找到 DSH。如果未识别，可在运行 setup 前设置 `$env:DSH_INSTALL_DIR` 为实际 DSH 安装目录。
+保留该检出目录，安装回执会指向它。完全退出并重新打开 DSH Desktop，使公共 bundle 加载。公共桥接负责 DSH 安装发现、worker profile、启动锁、协议和兼容性规则。本插件不部署 DSH bundle 或修改 profile。
 
-新机器默认工作区是用户目录下的 `DSH-Workspace`，会自动创建。想用其他目录，在 setup 前设置 `$env:CODEX_DSH_WORKSPACE`，例如 `C:\Agents\DSH`；已有安装再次运行 setup 会保留原工作区。新建任务默认完全权限，可在首次参数表中修改。
+然后从 GitHub 标签安装本插件，并运行安装副本中的 setup：
 
-安装后完全退出并重新打开 DSH Desktop，使 DSH 端插件加载；再新开 Codex 会话，说“打开 DSH 子智能体参数配置，先不要执行任务”。安装、配置和检查不会发送模型任务。
+```powershell
+codex plugin marketplace add https://github.com/RetMnit/dsh-subagent.git --ref v0.7.3
+codex plugin add dsh-subagent@dsh-subagent-tools
+node "$HOME/.codex/plugins/cache/dsh-subagent-tools/dsh-subagent/0.7.3/server/setup.mjs"
+```
 
-仓库跟随 `main` 发布，不创建新的 Git tag 或 GitHub Release。已有固定标签安装首次迁移到 `main`：
+最后一条使用默认 Codex 缓存位置；如自定义了 Codex 用户目录，使用安装命令返回的插件路径。命令中的 codex 需在 PATH 上，也可以使用 Codex Desktop 自带 codex.exe 的完整路径。
+
+本包 setup 只通过公共客户端检查运行时并初始化 Codex 配置，不启动 Host、不发送模型请求。默认工作区和权限来自公共客户端；首次可设置 `CODEX_DSH_WORKSPACE` 指定 Codex 的工作区，之后保留已保存值。再次运行会先备份自己的 config.json，保留 token 和默认值。
+
+插件自身状态位于 `~/.codex/dsh-subagent`（可用 `CODEX_DSH_STATE_DIR` 覆盖），不迁移旧配置或任务。插件与公共桥接的默认状态目录均基于 `os.homedir()`，使桌面应用、终端 CLI 和其他应用启动的进程使用同一用户目录，避开 MSIX 的 AppData 重定向。每个新 Codex 会话首次使用仍需保存一份参数表。安装后新开 Codex 会话，说“打开 DSH 子智能体参数配置，先不要执行任务”。
+
+## 升级或从本地检出切回 GitHub
+
+已登记本地检出或其他 ref 时，先移除旧 marketplace，再登记发布标签并安装，保留插件身份：
 
 ```powershell
 codex plugin marketplace remove dsh-subagent-tools
-codex plugin marketplace add RetMnit/dsh-subagent --ref main
+codex plugin marketplace add https://github.com/RetMnit/dsh-subagent.git --ref v0.7.3
 codex plugin add dsh-subagent@dsh-subagent-tools
 ```
 
-后续升级，在源码 `main` 分支执行 `git pull --ff-only` 和 `node server/setup.mjs --install-dsh`，再执行 `codex plugin marketplace upgrade dsh-subagent-tools`、`codex plugin add dsh-subagent@dsh-subagent-tools`。内部插件版本号仍递增，以便 Codex 刷新缓存。
+发布使用 annotated tag，已发布标签不移动。后续版本替换上述 ref；默认值变化时再运行新安装副本中的 setup。公共客户端迁移与验证见 [迁移状态](docs/migration.md)。
 
-更新保留工作区、token、会话配置和历史记录，并在改写前备份桥接配置与 DSH profile。DSH 端桥接版本为 `0.3.0`。续聊直接恢复原 session，不使用新版只复用空白会话的创建接口。
+## 本地开发
 
-## 兼容性判断
+仅开发时从本地检出安装，在本插件根目录执行：
 
-- DSH 插件管理器读取 `peerDependencies` 范围 `>=0.2.1-rc.1 <0.3.0-0`，不再精确锁定一个 rc 版本。
-- 已验收的 `0.2.1-rc.1` 和 `rc.2` 构建直接通过安装检查。其他同系列构建在启动 Host 或派发前比对 12 个关键模块的 SHA-256，覆盖会话控制、agent/循环、会话查询与投影、模型、preset、权限、工作区和导航；所选实现完全一致时可以继续使用，无需为无关小更新重发插件。
-- 桥接加载时检查实际用到的服务与方法。缺少恢复、模型选择等接口时直接报出缺失项，不执行任务。
-- 关键代码变化或超出适配系列时仍停止派发，先运行隔离假模型验收并审查接口变化，再更新 `companion/compatibility.json`。指纹仅覆盖所选模块；它和方法存在性检查不能证明所有依赖或行为都兼容。
+```powershell
+node server/setup.mjs
+codex plugin marketplace remove dsh-subagent-tools
+codex plugin marketplace add .
+codex plugin add dsh-subagent@dsh-subagent-tools
+```
 
-已验证构建及代码指纹集中在 `companion/compatibility.json`。这项机制不会自动调用真实模型，也不会在更新后自动启动任务。
+尚未登记 marketplace 时跳过 remove。本地源码更新后递增插件版本并重新安装；不手改插件缓存。
 
-仓库仅包含源码，不包含 API 密钥、模型账号、自定义 preset、会话或运行缓存。新机器使用自己的 DSH 配置，不要直接复制旧机器的 `config.json`、运行目录或浏览器 profile。
+## 公共执行边界
+
+- 从 `~/.dsh-bridge/install.json` 的 root 加载 `lib/client.mjs` 并调用 `connect()`；公共状态路径可用 `DSH_BRIDGE_STATE_DIR` 覆盖。
+- 任务方法传 `client: 'codex'`；配置 ID、revision 和 Codex conversationId 放入 `meta`，不作为任务顶层参数。
+- 执行或读取目录/会话时允许公共客户端按需启动 Host。状态监听、任务状态与取消、只读诊断均不拉起 Host；本插件不关闭共用后台 Host。
+- DSH 兼容性、运行时发现和协议检查委托公共客户端，异常原样报告，不复制版本或指纹策略。
+- `dsh_doctor` 完整保留公共客户端的各模式诊断；离线模式的启动失败原因在 `providers.<mode>.startupFailure` 中返回，不启动 Host。
+- 公共任务明细和后台 sessions/storages 位于 `~/.dsh-bridge`，由公共桥接管理。Codex 的 30 天/100 条策略只清理自己的记录；公共副本的保留期可能不同。
+
+仓库不包含 API 密钥、模型账号、自定义 preset、会话或运行缓存。新机器使用自己的 DSH 配置。
 
 ## 使用
 
@@ -67,7 +90,7 @@ codex plugin add dsh-subagent@dsh-subagent-tools
 
 Codex 工具返回只保留一份 JSON：list 按 subagent 返回摘要及旧轮次 ID，启动和 status 返回必要状态，不重复携带历史、事件原文、工具清单或渲染回执列表。wait 在任务结束时返回完整答案；需要单独读取时用 result，答案不截断。状态窗口及磁盘记录保留完整信息，等待问题、错误、连接异常和批量失败仍会回传。
 
-配置按稳定 conversationId 归属；每个 DSH session 是一个 subagent，每轮交互有独立 requestId/jobId。修改配置不改变已开始的任务，重试使用原快照。批量失败按任务列出，成功项不会因重试重复启动。旧版全局/续接配置备份并归档保留，不自动绑定到任何 Codex 会话；升级后首次使用需保存一份会话配置。
+配置按稳定 conversationId 归属；每个 DSH session 是一个 subagent，每轮交互有独立 requestId/jobId。修改配置不改变已开始的任务，重试使用原快照。批量失败按任务列出，成功项不会因重试重复启动。旧状态不自动绑定到任何 Codex 会话；首次使用需保存一份会话配置。
 
 ## 窗口与记录
 
@@ -83,22 +106,16 @@ Codex 工具返回只保留一份 JSON：list 按 subagent 返回摘要及旧轮
 
 清理仅涉及插件任务明细、结果缓存及其镜像，不删除 DSH 原始会话、参数配置、项目文件。清理后保留不含 prompt/结果的轻量去重标记，防止旧 requestId 被重新执行。旧版未记录归属的历史默认隐藏，不猜测所属聊天。
 
-## 维护
+## 维护与验证
 
-状态窗口还需要系统 Microsoft Edge。GitHub 安装名为 `dsh-subagent@dsh-subagent-tools`。只维护 Git 仓库源码，不修改 Codex 插件缓存或 DSH 部署副本。使用约束由插件的 skill、工具说明和后端共同维护，不写入用户全局或项目 AGENTS.md。
+只维护本仓库源码，MCP 与 skill 规则保留在插件内。普通回归：
 
 ```powershell
-node server/setup.mjs --install-dsh
+node --test tests/*.test.mjs
 ```
 
-安装器将 DSH 插件放入 `~/.dsh/bundles/codex-dsh-bridge` 并备份 profile。运行记录在应用数据目录，不依赖项目工作区。更新时增加版本并刷新 Codex 安装；DSH 组件更新后在空闲时让 DSH 重载。兼容性检查失败时先验证接口变化，再更新适配。
+测试安装临时的假 dsh-bridge 客户端，验证配置复用、并发、重试、参数边界、跨聊天隔离、记录清理、MCP 和窗口链路；不调用真实模型，不读取真实 DSH 安装或私人配置。公共桥接的真实 Host 假模型验收在其仓库运行，本包不再维护或运行 DSH 侧验收。
 
-普通回归运行 `node --test tests/*.test.mjs`。真实 DSH Host 验收使用 `$env:DSH_INSTALL_DIR` 指定安装目录后运行 `node tests/acceptance.mjs`；它创建隔离 home、profile、会话和本地假模型，验证新会话及 Host 重启后原 session 的续聊，完成后删除自身临时目录，不使用现有账号或真实模型。
+Windows 页面冻结的可选验证是 `node tests/panel-background-live.mjs [output.json]`：使用临时 Edge profile 和假公共客户端，验证冻结页面时的派发、续接、并行、去重、服务重启接管和前台补齐。正式窗口不开放调试端口。本次迁移未运行此可选验证。
 
-`npm test` 使用假模型验证配置复用、并发、任务隔离、重试和状态窗口链路。真实验收需要用户授权。已结束 Codex 回合的自动唤醒仍未实现。
-
-Windows 页面冻结验收：`node tests/panel-background-live.mjs [output.json]`。它启动独立临时 Edge profile 和假 DSH IPC，不使用用户浏览器/DSH 会话或外部模型；最小化并冻结页面后验证新建、续接、并行、去重、服务重启接管及前台补齐，结束后关闭测试窗口并清理临时目录。调试端口仅用于这一隔离测试，正式状态窗口不开放调试端口。
-
-普通测试使用临时目录、模拟 Host 和合成运行时，不依赖本机 DSH 安装或私人配置，不调用 DSH 模型。更新提交到 `main`，不创建新的 Git 标签或 Release。
-
-交互记录会自动清理，整个运行目录没有总容量上限，也不监听 Codex 会话删除。日志、备份、配置及去重标记保留；`sessions`/`storages` 是后台 DSH 原始数据。需要释放空间时，关闭所有状态窗口后可删除 `%LOCALAPPDATA%\CodexDSHBridge\status-window-profile`，之后会自动重建；Edge 组件可能重新下载。不要手动零散删除运行 JSON 文件。
+自身状态可用 `CODEX_DSH_STATE_DIR` 覆盖。默认目录包含 config.json、configurations.json、dispatch-requests.json、job-owners.json、pruned-jobs.json、supervisor-jobs.json、窗口 profile 和 logs/；不再保存 DSH runtime、管道配置、worker profile 或 DSH 原始会话。关闭所有本插件状态窗口后，可按需清理自身 status-window-profile；不要零散删除运行 JSON。已结束 Codex 回合的自动唤醒仍未实现。

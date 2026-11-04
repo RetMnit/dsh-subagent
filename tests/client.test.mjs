@@ -1,21 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import vm from 'node:vm';
+import path from 'node:path';
+import os from 'node:os';
+import {fakeConfig,fakeBridgeState} from './fixtures.mjs';
+import {loadBridge} from '../server/bridge.mjs';
+const temporary=()=>fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-adapter-test-'));
+const remove=root=>{assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(root).startsWith('codex-dsh-adapter-test-'));fs.rmSync(root,{recursive:true,force:true})};
+const calls=root=>fs.readFileSync(path.join(fakeBridgeState(root),'calls.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
 
-test('Desktop navigation retries a cold UI before acknowledging the correct revision', async () => {
-  let plugin;let attempts=0;let acknowledged;let dispose;let settle;
-  const done=new Promise(resolve=>{settle=resolve});
-  const context={window:{location:{href:'http://127.0.0.1:19387/'},__ModuleLoader__:{load:entry=>{plugin=entry.factory()}}},URL,AbortController,
-    console:{warn(){}},setTimeout,
-    fetch:async(input,options)=>{
-      if(options.method==='POST'){acknowledged=JSON.parse(options.body);settle();return{ok:true}}
-      const after=Number(new URL(input).searchParams.get('after'));
-      if(after>=7)return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true}));
-      return{ok:true,json:async()=>({revision:7,sessionId:'cold-session'})};
-    }};
-  vm.runInNewContext(fs.readFileSync(new URL('../companion/client.js',import.meta.url),'utf8'),context);
-  plugin.apply({uiWorkspace:{openSession(id){assert.equal(id,'cold-session');attempts++;if(attempts===1)throw new Error('UI catalog is not ready')}},effect(fn){dispose=fn()}});
-  await Promise.race([done,new Promise((_,reject)=>setTimeout(()=>reject(new Error('client retry timed out')),3000))]);
-  assert.equal(attempts,2);assert.equal(acknowledged.revision,7);assert.equal(acknowledged.sessionId,'cold-session');dispose();
+test('installed shared client loads from a root with spaces; defaults, doctor and focus delegate without starting Hosts',async()=>{
+  const root=temporary();try{
+    const cfg=fakeConfig(root);const bridge=await loadBridge({state:fakeBridgeState(root)});
+    assert.deepEqual(bridge.defaults,cfg.defaults);assert.equal(bridge.runtime().version,'fake-runtime');
+    const info=await bridge.doctor();assert.equal(info.modes.desktop.protocolVersion,2);bridge.focusDesktop();
+    assert.ok(calls(root).filter(call=>call.method==='doctor').every(call=>call.options.start===false));
+    assert.equal(calls(root).at(-1).method,'focusDesktop');
+  }finally{remove(root)}
+});
+test('offline doctor preserves shared startup failure details without requesting a Host launch',async()=>{
+  const root=temporary();try{
+    const failure={code:'dsh/compatibility',message:'shared bundle rejected this build',details:{mode:'desktop'}};
+    fakeConfig(root,{error:{code:'ENOENT',message:'pipe offline'},startupFailures:{desktop:failure}});
+    const bridge=await loadBridge({state:fakeBridgeState(root)});
+    const info=await bridge.doctor();
+    assert.deepEqual(info.modes.desktop,{connected:false,error:'ENOENT',startupFailure:failure});
+    assert.deepEqual(info.modes.headless,{connected:false,error:'ENOENT'});
+    assert.equal(calls(root).length,2);assert.ok(calls(root).every(call=>call.options.start===false));
+  }finally{remove(root)}
+});
+
+test('missing or malformed install receipts fail with actionable errors before starting anything',async()=>{
+  const root=temporary();try{
+    await assert.rejects(loadBridge({state:root}),/Install Common/);
+    fs.writeFileSync(path.join(root,'install.json'),JSON.stringify({root:'relative'}));
+    await assert.rejects(loadBridge({state:root}),/Invalid dsh-bridge/);
+  }finally{remove(root)}
 });

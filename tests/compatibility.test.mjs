@@ -1,30 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { assertSupportedVersion, assertHostCapabilities, verifyRuntimeCompatibility } from '../companion/compatibility.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import {fakeConfig,fakeBridgeState} from './fixtures.mjs';
+import {loadBridge} from '../server/bridge.mjs';
+const temporary=()=>fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-adapter-test-'));
+const remove=root=>{assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(root).startsWith('codex-dsh-adapter-test-'));fs.rmSync(root,{recursive:true,force:true})};
+const calls=root=>fs.readFileSync(path.join(fakeBridgeState(root),'calls.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
 
-test('small releases pass the family gate while older, unrecognized and future adapter families are refused', () => {
-  for (const version of ['0.2.1-rc.1', '0.2.1-rc.2', '0.2.1-rc.999', '0.2.1', '0.2.2-rc.1', '0.2.8']) assert.doesNotThrow(() => assertSupportedVersion(version));
-  for (const version of ['0.2.0', '0.2.1-rc.0', '0.2.1-beta.1', '0.3.0', '1.0.0', 'invalid', undefined]) assert.throws(() => assertSupportedVersion(version), /Unsupported/);
-});
-
-test('an unknown build is accepted only with matching adapter code, not by version or method names alone', () => {
-  const original = Buffer.from('tested controller implementation');
-  const policy = { adapterRevision: 99, verifiedBuilds: {}, fingerprints: { 'controller.js': createHash('sha256').update(original).digest('hex') } };
-  const runtime = { name: '@deepseek-ai/dsh-desktop', version: '0.2.2-rc.1', dshBuildCommit: 'new-unrelated-release' };
-  const accepted = verifyRuntimeCompatibility(runtime, () => original, policy);
-  assert.equal(accepted.status, 'matching-adapter-code'); assert.equal(accepted.checkedFiles, 1);
-  assert.throws(() => verifyRuntimeCompatibility(runtime, () => Buffer.from('same methods; different resume behavior'), policy), /adapter code changed.*controller.js/);
-  assert.throws(() => verifyRuntimeCompatibility(runtime, () => { throw new Error('missing'); }, policy), /adapter code changed/);
-  assert.throws(() => verifyRuntimeCompatibility(runtime, () => original, { ...policy, fingerprints: {} }), /adapter code changed/);
-  assert.throws(() => verifyRuntimeCompatibility({ ...runtime, version: '0.3.0' }, () => original, policy), /Unsupported/);
-});
-
-test('startup lists missing controller and resume capabilities before opening IPC or starting work', () => {
-  assert.throws(() => assertHostCapabilities({ sessionController: { create() {}, prompt() {} } }), error => {
-    assert.match(error.message, /sessionController.agents.resolveAgent/);
-    assert.match(error.message, /sessions.flush/);
-    assert.match(error.message, /connection.fetch.register/);
-    return true;
-  });
+test('shared protocol mismatch errors are preserved and passive calls never request a Host launch',async()=>{
+  const root=temporary();try{
+    fakeConfig(root,{error:{code:'dsh/protocol',message:'restart DSH Desktop'}});const bridge=await loadBridge({state:fakeBridgeState(root)});
+    await assert.rejects(bridge.call('desktop','doctor',{}, {start:true}),{code:'dsh/protocol'});
+    await assert.rejects(bridge.call('desktop','events',{afterCursor:0}),{code:'dsh/protocol'});
+    assert.deepEqual(calls(root).map(call=>call.options.start),[true,false]);
+  }finally{remove(root)}
 });

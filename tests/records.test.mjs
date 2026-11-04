@@ -34,7 +34,7 @@ test('resume preparation updates the same subagent immediately, restores its tar
 test('retention keeps 100 completed records per conversation, removes records older than 30 days, and never touches sessions/config/projects or active jobs',()=>{
   const state=temporary();
   try{
-    const jobs=new Map();const forgotten=[];const dir=path.join(state,'companion/desktop');fs.mkdirSync(dir,{recursive:true});
+    const jobs=new Map();const forgotten=[];const dir=path.join(state,'jobs/desktop');fs.mkdirSync(dir,{recursive:true});
     const protectedFiles=['config.json','configurations.json','sessions/original.jsonl','storages/model.json','project/game.cs'];
     for(const name of protectedFiles){const file=path.join(state,name);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'keep exactly')}
     for(let i=0;i<105;i++){const job=makeJob('chat-A','completed',i*1000);jobs.set(job.jobId,job);fs.writeFileSync(path.join(dir,job.jobId+'.json'),JSON.stringify(job))}
@@ -45,7 +45,7 @@ test('retention keeps 100 completed records per conversation, removes records ol
     const report=records.cleanup();assert.equal(report.removed,6);assert.equal(forgotten.length,6);
     assert.equal([...jobs.values()].filter(job=>job.conversationId==='chat-A'&&job.status==='completed').length,100);
     assert.equal([...jobs.values()].filter(job=>['running','starting','waiting-user','waiting-approval'].includes(job.status)).length,4);
-    assert.ok(jobs.has(other.jobId));assert.equal(records.accepts(old),false);assert.ok(!fs.existsSync(path.join(dir,old.jobId+'.json')));
+    assert.ok(jobs.has(other.jobId));assert.equal(records.accepts(old),false);assert.ok(fs.existsSync(path.join(dir,old.jobId+'.json')));
     for(const name of protectedFiles)assert.equal(fs.readFileSync(path.join(state,name),'utf8'),'keep exactly');
     const restarted=runtimeRecords(state,jobs,{forget(){}},()=>now);assert.equal(restarted.accepts(old),false);
     assert.equal(restarted.cleanup().removed,0);
@@ -75,11 +75,12 @@ test('cleanup leaves a retry tombstone rather than executing a cleaned request a
   }finally{remove(state)}
 });
 
-test('a stale mirror cannot clean an active provider record or a mismatched file',()=>{
+test('cleanup never reads or deletes shared job records even when a stale local mirror disagrees',()=>{
   const state=temporary();try{
-    const job=makeJob('chat-A','completed',40*86400000);const jobs=new Map([[job.jobId,job]]);const dir=path.join(state,'companion/desktop');fs.mkdirSync(dir,{recursive:true});const file=path.join(dir,job.jobId+'.json');
-    fs.writeFileSync(file,JSON.stringify({...job,status:'running'}));const records=runtimeRecords(state,jobs,{forget(){throw new Error('must not forget')}} ,()=>now);
-    assert.equal(records.cleanup().removed,0);assert.ok(jobs.has(job.jobId));
-    fs.writeFileSync(file,JSON.stringify({...job,jobId:'another'}));assert.equal(records.cleanup().removed,0);assert.ok(fs.existsSync(file));
+    const job=makeJob('chat-A','completed',40*86400000);const jobs=new Map([[job.jobId,job]]);
+    const shared=path.join(state,'jobs/desktop');fs.mkdirSync(shared,{recursive:true});
+    const file=path.join(shared,job.jobId+'.json');fs.writeFileSync(file,'shared record is not local JSON');
+    const records=runtimeRecords(state,jobs,{forget(){}},()=>now);
+    assert.equal(records.cleanup().removed,1);assert.equal(fs.readFileSync(file,'utf8'),'shared record is not local JSON');
   }finally{remove(state)}
 });

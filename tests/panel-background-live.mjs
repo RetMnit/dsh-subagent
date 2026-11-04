@@ -1,50 +1,48 @@
-// Opt-in Windows development acceptance. Own isolated Edge profile, fake DSH
-// IPC/model only. Never attaches to the user's browser or DSH sessions.
+// Opt-in Windows development acceptance. Own isolated Edge profile, fake dsh-bridge
+// client only. Never attaches to the user's browser or DSH sessions.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import net from 'node:net';
+import http from 'node:http';
 import {spawn, execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {fakeConfig} from './fixtures.mjs';
+import {fakeConfig,fakeBridgeState} from './fixtures.mjs';
 import {findStatusWindow, panelProfile} from '../server/panel.mjs';
 
 if(process.platform!=='win32')throw new Error('Windows acceptance only');
 const run=promisify(execFile), delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-background-test-'));
 const state=path.join(root,'state');fs.mkdirSync(state);
-const config=fakeConfig(state);const token=randomUUID();
-const pipe='\\\\.\\pipe\\codex-dsh-background-test-'+randomUUID();
-const jobs=[];const sockets=new Set();let starts=0;let supervisor;let browser;let cdp;
+const token=randomUUID();
+const jobs=[];let starts=0;let supervisor;let browser;let cdp;
 const conversationId='background-acceptance-'+randomUUID();
-const server=net.createServer(socket=>{
-  sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});
-  socket.setEncoding('utf8');let buffer='';
-  socket.on('data',chunk=>{buffer+=chunk;const cut=buffer.indexOf('\n');if(cut<0)return;
-    const call=JSON.parse(buffer.slice(0,cut));void(async()=>{
-      assert.equal(call.token,token);let result;
-      if(call.method==='doctor')result={mode:'desktop',protocolVersion:1,instanceId:'fake-host',capabilities:['concurrent-sessions']};
-      else if(call.method==='start'){
-        result=jobs.find(job=>job.requestId===call.params.requestId);
-        if(!result){starts++;result={jobId:randomUUID(),sessionId:call.params.sessionId||randomUUID(),requestId:call.params.requestId,
-          mode:'desktop',status:'completed',createdAt:new Date().toISOString(),finishedAt:new Date().toISOString(),
-          result:'fake-answer-'+starts,events:[],requested:{workspace:root}};jobs.push(result)}
-      }else if(call.method==='status')result=jobs.find(job=>job.jobId===call.params.jobId);
-      else if(call.method==='sessions')result=[];
-      else {await delay(100);result={instanceId:'fake-host',cursor:jobs.length,jobs}}
-      if(!socket.destroyed)socket.end(JSON.stringify({id:call.id,result})+'\n');
-    })().catch(error=>{if(!socket.destroyed)socket.end(JSON.stringify({id:call.id,error:{message:error.message}})+'\n')});
-  });
+const server=http.createServer(async(request,response)=>{
+  let call;
+  try{
+    let body='';for await(const chunk of request)body+=chunk;call=JSON.parse(body);let result;
+    if(['start','status','events','list'].includes(call.method))assert.equal(call.params.client,'codex');
+    if(call.method==='doctor')result={mode:call.mode,protocolVersion:2,instanceId:'fake-host',capabilities:['concurrent-sessions']};
+    else if(call.method==='start'){
+      result=jobs.find(job=>job.requestId===call.params.requestId);
+      if(!result){starts++;result={jobId:'job-'+randomUUID(),client:'codex',meta:call.params.meta,sessionId:call.params.sessionId||'dsh-bridge-'+randomUUID(),requestId:call.params.requestId,
+        mode:call.mode,status:'completed',createdAt:new Date().toISOString(),finishedAt:new Date().toISOString(),
+        result:'fake-answer-'+starts,events:[],requested:{workspace:root}};jobs.push(result)}
+    }else if(call.method==='status')result=jobs.find(job=>job.jobId===call.params.jobId);
+    else if(call.method==='sessions')result=[];
+    else{await delay(100);result={instanceId:'fake-host',cursor:jobs.length,jobs:jobs.filter(job=>job.mode===call.mode)}}
+    response.end(JSON.stringify({result}));
+  }catch(error){response.end(JSON.stringify({error:{message:error.message}}))}
 });
-await new Promise(resolve=>server.listen(pipe,resolve));
-fs.writeFileSync(path.join(state,'config.json'),JSON.stringify({...config,token,pipes:{desktop:pipe,headless:pipe+'-unused'},defaults:{workspace:root}}));
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const config=fakeConfig(state,{endpoint:'http://127.0.0.1:'+server.address().port});
+fs.writeFileSync(path.join(state,'config.json'),JSON.stringify({...config,token,defaults:{workspace:root}}));
 async function boot(){
   const before=fs.existsSync(path.join(state,'supervisor.json'))?JSON.parse(fs.readFileSync(path.join(state,'supervisor.json'))).instanceId:null;
   supervisor=spawn(process.execPath,[fileURLToPath(new URL('../server/supervisor.mjs',import.meta.url))],{
-    env:{...process.env,CODEX_DSH_STATE_DIR:state},windowsHide:true,stdio:'ignore'});
+    env:{...process.env,CODEX_DSH_STATE_DIR:state,DSH_BRIDGE_STATE_DIR:fakeBridgeState(state)},windowsHide:true,stdio:'ignore'});
   for(let i=0;i<200;i++){
     try{const info=JSON.parse(fs.readFileSync(path.join(state,'supervisor.json')));if(info.instanceId!==before)return info}catch{}
     await delay(25);
@@ -137,7 +135,7 @@ try{
   if(cdp){await cdp.request('Browser.close').catch(()=>{});cdp.close()}
   if(browser&&browser.exitCode===null){await delay(500);if(browser.exitCode===null)browser.kill()}
   if(supervisor&&supervisor.exitCode===null)supervisor.kill();
-  for(const socket of sockets)socket.destroy();server.close();await delay(500);
+  server.closeAllConnections();server.close();await delay(500);
   assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(root).startsWith('codex-dsh-background-test-'));
   try{fs.rmSync(root,{recursive:true,force:true})}catch{console.error('Temporary test profile still in use; preserved at '+root)}
 }

@@ -20,19 +20,6 @@ export function runtimeRecords(state, jobs, requests, clock = Date.now) {
     // The Host omits sessionId while preparing; a resume already has a durable target.
     return {...job,...(!job.sessionId&&target?.mode===job.mode?{sessionId:target.sessionId}:{}),...(id?{conversationId:id}:{})};
   };
-  const recordFile = job => {
-    if (!['desktop','headless'].includes(job.mode) || !/^job-[a-zA-Z0-9-]{1,100}$/.test(job.jobId)) throw new Error('Invalid bridge record identity');
-    const root = fs.realpathSync(state);
-    for (const directory of [path.join(root,'companion'),path.join(root,'companion',job.mode)]) {
-      if (fs.existsSync(directory) && fs.lstatSync(directory).isSymbolicLink()) throw new Error('Refusing cleanup through a linked directory');
-    }
-    const file = path.join(root,'companion',job.mode,job.jobId+'.json');
-    if (!fs.existsSync(file)) return null;
-    if (fs.lstatSync(file).isSymbolicLink() || !fs.realpathSync(file).startsWith(root+path.sep)) throw new Error('Refusing cleanup outside bridge state');
-    const stored = readJson(file);
-    if (stored.jobId !== job.jobId || !terminal(stored.status)) return false;
-    return file;
-  };
   return {
     decorate: decorated,
     remember(incoming) {
@@ -62,10 +49,8 @@ export function runtimeRecords(state, jobs, requests, clock = Date.now) {
       }
       let removed=0;const errors=[];
       for(const job of candidates){try{
-        const file=recordFile(job);if(file===false)continue;
         requests.forget(job.requestId);
         pruned[job.jobId]=clock();atomic(prunedFile,pruned);
-        if(file)fs.unlinkSync(file);
         jobs.delete(job.jobId);delete owners[job.jobId];removed++;
       }catch(error){errors.push({jobId:job.jobId,message:error.message})}}
       if(removed)atomic(ownerFile,owners);

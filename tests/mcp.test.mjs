@@ -10,12 +10,13 @@ import http from 'node:http';
 
 test('MCP handshake, discovery and harmless doctor round-trip', async () => {
   const state=fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-mcp-test-'));const token=randomUUID(),instanceId=randomUUID();
+  const startupFailure={code:'dsh/compatibility',message:'bundle startup failed',details:{mode:'desktop'}};
   const server=http.createServer(async(request,response)=>{
     assert.equal(request.headers.authorization,'Bearer '+token);
     response.setHeader('content-type','application/json');
     if(request.url==='/health')return response.end(JSON.stringify({instanceId}));
     let body='';for await(const chunk of request)body+=chunk;const call=JSON.parse(body);assert.equal(call.method,'doctor');
-    response.end(JSON.stringify({result:{runtime:{version:'0.2.1-rc.1'}}}));
+    response.end(JSON.stringify({result:{runtime:{version:'0.2.1-rc.1'},providers:{desktop:{connected:false,error:'ENOENT',startupFailure}}}}));
   });await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   fs.writeFileSync(path.join(state,'config.json'),JSON.stringify({token}));
   fs.writeFileSync(path.join(state,'supervisor.json'),JSON.stringify({instanceId,url:'http://127.0.0.1:'+server.address().port}));
@@ -40,6 +41,7 @@ test('MCP handshake, discovery and harmless doctor round-trip', async () => {
     const doctor=await call('tools/call',{name:'dsh_doctor',arguments:{}}); assert.equal(doctor.result.isError,undefined);
     assert.equal(doctor.result.structuredContent,undefined);assert.equal(doctor.result.content.length,1);
     assert.equal(JSON.parse(doctor.result.content[0].text).runtime.version,'0.2.1-rc.1');
+    assert.deepEqual(JSON.parse(doctor.result.content[0].text).providers.desktop.startupFailure,startupFailure);
     const absent=await call('tools/call',{name:'dsh_start',arguments:{}}); assert.ok(absent.error); assert.match(absent.error.message,/Missing required/);
     const legacy=await call('tools/call',{name:'dsh_configure',arguments:{conversationId:'chat-A',createNew:true}});assert.match(legacy.error.message,/Unknown argument/);
     assert.equal(stderr,'');

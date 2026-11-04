@@ -3,36 +3,40 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import net from 'node:net';
+import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { fakeConfig } from './fixtures.mjs';
+import { fakeConfig, fakeBridgeState } from './fixtures.mjs';
 
 test('one saved configuration starts a concurrent batch, shows every task, deduplicates retries and keeps resumed sessions exclusive', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-supervisor-test-'));
-  const base = fakeConfig(root); const token=randomUUID(); const sockets=new Set(); const servers=[]; const dispatched=[]; let dispatches=0;
-  const pipes=Object.fromEntries(['desktop','headless'].map(mode=>[mode,process.platform==='win32'?'\\\\.\\pipe\\codex-dsh-supervisor-test-'+randomUUID():path.join(root,mode+'.sock')]));
+  const token=randomUUID(); const dispatched=[]; const bridgeCalls=[]; let dispatches=0, offline=false;
   const providerJobs={desktop:[],headless:[]};
-  for(const mode of ['desktop','headless']){
-    const server=net.createServer(socket=>{
-      sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.setEncoding('utf8');let buffer='';
-      socket.on('data',chunk=>{buffer+=chunk;let cut;while((cut=buffer.indexOf('\n'))>=0){const request=JSON.parse(buffer.slice(0,cut));buffer=buffer.slice(cut+1);void(async()=>{
-        assert.equal(request.token,token);let result;
-        if(request.method==='doctor')result={mode,protocolVersion:1,dshVersion:'0.2.1-rc.1',instanceId:mode,capabilities:['concurrent-sessions']};
-        else if(request.method==='sessions')result=[];
-        else if(request.method==='status')result=providerJobs[mode].find(job=>job.jobId===request.params.jobId);
-        else if(request.method==='start'){
-          dispatches++;await new Promise(resolve=>setTimeout(resolve,60));
-          const prior=providerJobs[mode].find(job=>job.requestId===request.params.requestId);
-          if(prior){dispatches--;result=prior}else{dispatched.push(request.params);const job={jobId:'fake-'+randomUUID(),sessionId:request.params.sessionId?undefined:randomUUID(),requestId:request.params.requestId,mode,status:request.params.sessionId?'starting':'running',createdAt:new Date().toISOString(),requested:{workspace:root},events:[]};providerJobs[mode].push(job);result=job}
-        }else{await new Promise(resolve=>setTimeout(resolve,40));result={instanceId:mode,cursor:providerJobs[mode].length,jobs:providerJobs[mode]}}
-        if(!socket.destroyed)socket.end(JSON.stringify({id:request.id,result})+'\n');
-      })()}});socket.on('error',()=>{});
-    });await new Promise(resolve=>server.listen(pipes[mode],resolve));servers.push(server);
-  }
-  fs.writeFileSync(path.join(root,'config.json'),JSON.stringify({...base,token,pipes,defaults:{...base.defaults,workspace:root}}));
-  const child=spawn(process.execPath,[fileURLToPath(new URL('../server/supervisor.mjs',import.meta.url))],{env:{...process.env,CODEX_DSH_STATE_DIR:root},windowsHide:true,stdio:'ignore'});
+  const server=http.createServer(async(request,response)=>{
+    try{
+      let body='';for await(const chunk of request)body+=chunk;const call=JSON.parse(body);bridgeCalls.push(call);
+      const {mode,method,params}=call;let result;
+      if(['start','prepare','list','status','events','cancel','open'].includes(method))assert.equal(params.client,'codex');
+      if(method==='doctor'){if(offline)throw new Error('pipe offline');result={mode,protocolVersion:2,instanceId:mode,capabilities:['concurrent-sessions']};}
+      else if(method==='sessions')result=[];
+      else if(method==='status')result=providerJobs[mode].find(job=>job.jobId===params.jobId);
+      else if(method==='cancel'){result=providerJobs[mode].find(job=>job.jobId===params.jobId);result.status='cancelled';}
+      else if(method==='open')result={opened:true};
+      else if(method==='start'){
+        dispatches++;await new Promise(resolve=>setTimeout(resolve,60));
+        const prior=providerJobs[mode].find(job=>job.requestId===params.requestId);
+        if(prior){dispatches--;result=prior}else{
+          dispatched.push(params);const job={jobId:'job-'+randomUUID(),client:params.client,meta:params.meta,sessionId:params.sessionId?undefined:'dsh-bridge-'+randomUUID(),requestId:params.requestId,mode,status:params.sessionId?'starting':'running',createdAt:new Date().toISOString(),requested:{workspace:root},events:[]};providerJobs[mode].push(job);result=job;
+        }
+      }else{await new Promise(resolve=>setTimeout(resolve,40));result={instanceId:mode,cursor:providerJobs[mode].length,jobs:providerJobs[mode]}}
+      response.end(JSON.stringify({result}));
+    }catch(error){response.end(JSON.stringify({error:{message:error.message}}))}
+  });await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const endpoint='http://127.0.0.1:'+server.address().port;
+  const base=fakeConfig(root,{endpoint});
+  fs.writeFileSync(path.join(root,'config.json'),JSON.stringify({...base,token}));
+  const child=spawn(process.execPath,[fileURLToPath(new URL('../server/supervisor.mjs',import.meta.url))],{env:{...process.env,CODEX_DSH_STATE_DIR:root,DSH_BRIDGE_STATE_DIR:fakeBridgeState(root)},windowsHide:true,stdio:'ignore'});
   let heartbeat;
   try{
     const infoFile=path.join(root,'supervisor.json');for(let i=0;i<100&&!fs.existsSync(infoFile);i++)await new Promise(resolve=>setTimeout(resolve,10));
@@ -90,16 +94,28 @@ test('one saved configuration starts a concurrent batch, shows every task, dedup
     const form=await fetch(info.url+'/?configure=example');assert.equal(form.status,200);assert.match(await form.text(),/保存配置/);
     const wrongOrigin=await fetch(info.url+'/api',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json',origin:'https://example.com'},body:'{}'});assert.equal(wrongOrigin.status,403);
     const events=await fetch(info.url+'/events?conversationId=chat-A',{headers:{authorization:'Bearer '+token}});const reader=events.body.getReader();const first=await reader.read();
-    const eventText=new TextDecoder().decode(first.value);assert.match(eventText,/fake-/);assert.ok(!eventText.includes(other.jobId));await reader.cancel();
+    const eventText=new TextDecoder().decode(first.value);assert.match(eventText,/job-/);assert.ok(!eventText.includes(other.jobId));await reader.cancel();
     assert.equal((await fetch(info.url+'/events',{headers:{authorization:'Bearer '+token}})).status,400);
+    assert.ok(bridgeCalls.filter(call=>call.method==='events'||call.method==='status'||call.method==='list').every(call=>call.options.start===false));
+    const doctor=(await call('doctor')).result;assert.equal(doctor.runtime.version,'fake-runtime');
+    assert.equal((await call('cancel',{jobId:batch.jobs[0].jobId})).result.status,'cancelled');
+    assert.equal((await call('open',{jobId:batch.jobs[0].jobId})).result.opened,true);
+    for(const selected of dispatched){assert.equal(selected.client,'codex');assert.equal(selected.configurationId,undefined);assert.equal(selected.configurationRevision,undefined);assert.ok(selected.meta.configurationId);assert.equal(selected.meta.configurationRevision,1);assert.ok(selected.meta.conversationId);}
+    const startupFailure={code:'dsh/compatibility',message:'shared bundle startup failed',details:{mode:'desktop'}};
+    fakeConfig(root,{endpoint,startupFailures:{desktop:startupFailure}});offline=true;
+    const offlineCallIndex=bridgeCalls.length;
+    const diagnosis=(await call('doctor')).result;
+    assert.deepEqual(diagnosis.providers.desktop,{connected:false,error:'pipe offline',startupFailure});
+    assert.deepEqual(diagnosis.providers.headless,{connected:false,error:'pipe offline'});
+    assert.ok(bridgeCalls.slice(offlineCallIndex).filter(call=>call.method==='doctor').every(call=>call.options.start===false));
     // A connected Host must not bypass the current installation preflight.
-    fakeConfig(root, { dshBuildCommit: 'changed-after-host-start' });
+    fakeConfig(root, { endpoint, runtimeError: 'shared adapter code changed' });
     const changedRuntime = await call('sessions', { mode: 'desktop' });
     assert.match(changedRuntime.error.message, /adapter code changed/);
     assert.equal(dispatches, 5);
   }finally{
     clearInterval(heartbeat);
-    child.kill();for(const socket of sockets)socket.destroy();for(const server of servers)server.close();await new Promise(resolve=>setTimeout(resolve,80));
+    child.kill();server.closeAllConnections();server.close();await new Promise(resolve=>setTimeout(resolve,80));
     assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(root).startsWith('codex-dsh-supervisor-test-'));
     fs.rmSync(root,{recursive:true,force:true});
   }

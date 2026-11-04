@@ -7,7 +7,7 @@ import {statusPanel, findStatusWindow} from '../server/panel.mjs';
 const conversationId=process.env.CODEX_THREAD_ID || process.env.CODEX_SESSION_ID;
 if(!conversationId)throw new Error('Current Codex conversation ID is required');
 const doctor=await api('doctor',{conversationId});
-assert.equal(doctor.version,'0.6.2','Restart the idle supervisor from this source before live acceptance');
+assert.equal(doctor.version,'0.7.3','Restart the idle supervisor from this source before live acceptance');
 await api('open',{conversationId,dashboard:true});
 const existing=await findStatusWindow(doctor.dashboardUrl,STATE);
 assert.equal(existing.exists,true,'real Edge app belongs to this conversation');

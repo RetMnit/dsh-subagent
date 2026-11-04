@@ -2,13 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 
-// Minimal synthetic ASAR fixture. No DSH executable or model is run by tests.
+// The installed client is synthetic. It never imports Common or starts DSH.
+export const fakeBridgeState = root => path.join(root, 'bridge-state');
 export function fakeConfig(root, overrides = {}) {
-  const installDir=path.join(root,'runtime');fs.mkdirSync(path.join(installDir,'resources'),{recursive:true});
-  const manifest=Buffer.from(JSON.stringify({name:'@deepseek-ai/dsh-desktop',version:'0.2.1-rc.1',dshBuildCommit:'ed75efeffee65f9fe93625bbd76a68cb219aaaf9',...overrides}));
-  const header=Buffer.from(JSON.stringify({files:{'package.json':{size:manifest.length,offset:'0'}}}));
-  const prefix=Buffer.alloc(16);prefix.writeUInt32LE(8+header.length,4);prefix.writeUInt32LE(header.length,12);
-  fs.writeFileSync(path.join(installDir,'resources/app.asar'),Buffer.concat([prefix,header,manifest]));
-  fs.writeFileSync(path.join(installDir,'DeepSeek Harness.exe'),'');
-  return {runtime:{installDir},defaults:{workspace:root,permission:'danger-full-access'},token:randomUUID()};
+  const state=fakeBridgeState(root), runtimeRoot=path.join(root,'fake bridge runtime');
+  fs.mkdirSync(path.join(runtimeRoot,'lib'),{recursive:true});fs.mkdirSync(state,{recursive:true});
+  const defaults={workspace:root,permission:'danger-full-access'};
+  fs.writeFileSync(path.join(state,'install.json'),JSON.stringify({root:runtimeRoot,version:'0.4.0',protocol:2}));
+  fs.writeFileSync(path.join(state,'fake.json'),JSON.stringify({defaults,...overrides}));
+  fs.writeFileSync(path.join(runtimeRoot,'lib/client.mjs'),'export { connect } from '+JSON.stringify(new URL('./fake-bridge-client.mjs',import.meta.url).href)+';');
+  return {defaults,token:randomUUID()};
 }

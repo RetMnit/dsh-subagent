@@ -2,20 +2,22 @@ import http from 'node:http';
 import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { ROOT, STATE, config, readJson, atomic, pipeCall, equal, terminal, discoverRuntime } from './common.mjs';
+import { ROOT, STATE, config, readJson, atomic, equal, terminal, supervisorLock } from './common.mjs';
 import { configurationStore } from './configurations.mjs';
 import { requestStore } from './requests.mjs';
 import { statusPanel } from './panel.mjs';
 import { runtimeRecords, conversationId } from './records.mjs';
 import { groupSubagents } from './subagents.mjs';
 
+import { loadBridge } from './bridge.mjs';
+
 const cfg = config();
+const bridge = await loadBridge();
 const instanceId = randomUUID();
 const lock = net.createServer();
-try { await new Promise((resolve, reject) => { lock.once('error', reject); lock.listen(cfg.pipes.headless + '-supervisor', resolve); }); }
+try { await new Promise((resolve, reject) => { lock.once('error', reject); lock.listen(supervisorLock, resolve); }); }
 catch { process.exit(0); }
 const configurations = configurationStore(STATE, cfg.defaults);
 const requests = requestStore(STATE, configurations);
@@ -23,7 +25,6 @@ const changes = new EventEmitter(); changes.setMaxListeners(200);
 const streams = new Set();
 const jobs = new Map();
 const providers = { desktop: { connected: false }, headless: { connected: false } };
-const boots = new Map();
 const dispatching = new Set();
 const monitorStarted = new Set();
 let cursor = 0;
@@ -64,7 +65,7 @@ async function monitor(mode) {
   for (;;) {
     try {
       const current = providers[mode];
-      const result = await pipeCall(mode, 'events', { afterCursor: current.sourceCursor ?? -1, instanceId: current.instanceId, timeoutMs: 25000 });
+      const result = await bridge.call(mode, 'events', { afterCursor: current.sourceCursor ?? -1, instanceId: current.instanceId, timeoutMs: 25000 });
       accept(mode, result);
     } catch (error) {
       if (providers[mode].connected) { providers[mode] = { ...providers[mode], connected: false, error: error.message }; publish(); }
@@ -72,49 +73,15 @@ async function monitor(mode) {
     }
   }
 }
-function startProcess(mode) {
-  discoverRuntime(cfg.runtime.installDir);
-  const child = spawn(process.execPath, [path.join(ROOT, 'server/host-runner.mjs'), mode], {
-    cwd: cfg.defaults.workspace, windowsHide: true, detached: true, shell: false, stdio: 'ignore',
-    env: { ...process.env, CODEX_DSH_STATE_DIR: STATE },
-  });
-  child.on('error', error => { providers[mode].error = error.message; });
-  child.unref();
-  providers[mode] = { connected: false, runnerPid: child.pid, startedByBridge: true };
-}
 async function ensure(mode) {
-  if (!['desktop', 'headless'].includes(mode)) throw new Error('mode must be desktop or headless');
-  discoverRuntime(cfg.runtime.installDir);
-  try { const result = await pipeCall(mode, 'doctor', {}, 2000); void monitor(mode); return result; } catch (error) {
-    if (!['ENOENT', 'ECONNREFUSED'].includes(error.code)) throw error;
-  }
-  if (!boots.has(mode)) boots.set(mode, (async () => {
-    startProcess(mode);
-    let failure;
-    for (let i = 0; i < 150; i++) {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      try {
-        const result = await pipeCall(mode, 'doctor', {}, 1500);
-        const launch = readJson(path.join(STATE, mode + '-launch.json'));
-        providers[mode] = { ...providers[mode], pid: launch.pid, runnerPid: launch.runnerPid };
-        void monitor(mode); return result;
-      } catch (error) { failure = error; }
-    }
-    const log = path.join(STATE, 'logs', mode + '.log');
-    throw new Error(`DSH ${mode} bridge did not become ready (${failure?.message}); inspect ${log}`);
-  })().finally(() => boots.delete(mode)));
-  return boots.get(mode);
-}
-function focusDesktop() {
-  const runtime = discoverRuntime(cfg.runtime.installDir);
-  const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
-  const child = spawn(runtime.executable, [], { env, detached: true, windowsHide: false, shell: false, stdio: 'ignore' });
-  child.on('error', error => { providers.desktop.error = error.message; }); child.unref();
+  const host = await bridge.call(mode, 'doctor', {}, { start: true });
+  void monitor(mode);
+  return host;
 }
 async function locate(params) {
   let job = jobs.get(params.jobId);
   if (!job) for (const mode of ['desktop', 'headless']) {
-    try { accept(mode, await pipeCall(mode, 'list', {}, 2500)); } catch {}
+    try { accept(mode, await bridge.call(mode, 'list', {})); } catch {}
   }
   job = jobs.get(params.jobId);
   if (!job || !records.owns(job,conversationId(params))) throw new Error('Unknown jobId in this Codex conversation');
@@ -142,20 +109,17 @@ function getPanel(id) {
 }
 const methods = {
   doctor: async params => {
-    const states = {};
-    for (const mode of ['desktop', 'headless']) {
-      try { states[mode] = await pipeCall(mode, 'doctor', {}, 2000); } catch (error) { states[mode] = { connected: false, error: error.code ?? error.message }; }
-    }
-    return { version: '0.6.2', runtime: discoverRuntime(cfg.runtime.installDir), defaults: cfg.defaults, providers: states,
+    const { runtime, modes } = await bridge.doctor();
+    return { version: '0.7.3', runtime, defaults: cfg.defaults, providers: modes,
       ...(params.conversationId ? {dashboardUrl: dashboardUrl(conversationId(params)), panel: getPanel(params.conversationId).status()} : {}), retention: records.status(), callback: { activeWait: true, idleCodexWakeup: 'not-supported-or-verified' } };
   },
   configure: async params => { const entry = configurations.create(params); return {...entry, url: baseUrl + '/?conversationId=' + encodeURIComponent(entry.conversationId) + '&configure=' + entry.configurationId + '#' + cfg.token}; },
   configuration: async params => configurations.read(conversationId(params)),
   saveConfiguration: async params => configurations.confirm(conversationId(params), params.configurationId, params.values),
   panelHeartbeat: async params => {const id=conversationId(params);return getPanel(id).heartbeat({...params,jobs:params.jobs?.filter(job => jobs.has(job.jobId) && records.owns(jobs.get(job.jobId),id))})},
-  catalog: async params => { const mode = params.mode ?? 'headless'; await ensure(mode); return pipeCall(mode, 'catalog'); },
-  sessions: async params => { const mode = params.mode ?? 'desktop'; await ensure(mode); return pipeCall(mode, 'sessions', params); },
-  prepare: async params => { const mode = params.mode ?? 'headless'; await ensure(mode); return pipeCall(mode, 'prepare', params); },
+  catalog: async params => { const mode = params.mode ?? 'headless'; await ensure(mode); return bridge.call(mode, 'catalog'); },
+  sessions: async params => { const mode = params.mode ?? 'desktop'; await ensure(mode); return bridge.call(mode, 'sessions', params); },
+  prepare: async params => { const mode = params.mode ?? 'headless'; await ensure(mode); return bridge.call(mode, 'prepare', params); },
   start: async params => {
     const panel=getPanel(conversationId(params));
     const selected = requests.resolve(params);
@@ -186,7 +150,7 @@ const methods = {
   list: async params => snapshot(conversationId(params)),
   status: async params => {
     const job = await locate(params);
-    try { const current = records.remember(await pipeCall(job.mode, 'status', params, 3000)); publish(); return compact(current); }
+    try { const current = records.remember(await bridge.call(job.mode, 'status', params)); publish(); return compact(current); }
     catch (error) { return { ...compact(job), connection: 'disconnected', connectionError: error.message }; }
   },
   result: async params => methods.status(params),
@@ -200,30 +164,28 @@ const methods = {
     while (!(actionable() && (params.afterCursor === undefined || params.afterCursor !== cursor)) && Date.now() < deadline) await waitChange(deadline - Date.now());
     return { instanceId, cursor, reason: actionable() ? 'attention-or-completion' : 'timeout', jobs: ids.flatMap(id => jobs.has(id)?[compact(jobs.get(id))]:[]) };
   },
-  cancel: async params => { const job = await locate(params); return pipeCall(job.mode, 'cancel', params); },
+  cancel: async params => { const job = await locate(params); return bridge.call(job.mode, 'cancel', params); },
   open: async params => {
     const id=conversationId(params);
     if (params.dashboard) {const panel=getPanel(id);return {url:dashboardUrl(id),conversationId:id,panel:await panel.ensure()};}
     const job = params.jobId ? await locate(params) : null;
     if (job?.mode === 'headless') throw new Error('This worker session has isolated storage; use the task dashboard to inspect it');
     await ensure('desktop');
-    focusDesktop();
-    return pipeCall('desktop', 'open', { ...params, sessionId: params.sessionId ?? job?.sessionId });
+    bridge.focusDesktop();
+    return bridge.call('desktop', 'open', { ...params, sessionId: params.sessionId ?? job?.sessionId });
   },
-  shutdownWorker: async () => pipeCall('headless', 'shutdown'),
 };
 async function dispatch(params) {
     const mode = params.mode ?? 'headless';
     const host = await ensure(mode);
     if (!host.capabilities?.includes('concurrent-sessions')) throw new Error('DSH must reload the updated bridge plugin before dispatch');
-    discoverRuntime(cfg.runtime.installDir);
     const target = params.sessionId ? mode + ':' + params.sessionId : null;
     if (target && dispatching.has(target)) throw new Error('A dispatch is in progress in this session; retry the same requestId');
     if ([...jobs.values()].some(job => !terminal(job.status) && (job.requestId !== params.requestId || job.mode !== mode)
       && target && job.mode === mode && job.sessionId === params.sessionId)) throw new Error('Another bridge task is active in this session');
     if (target) dispatching.add(target);
     try {
-      const job = records.remember(records.assign(await pipeCall(mode, 'start', { ...params, requestId: params.requestId ?? randomUUID() }), conversationId(params)));
+      const job = records.remember(records.assign(await bridge.call(mode, 'start', { ...params, requestId: params.requestId ?? randomUUID() }), conversationId(params)));
       publish(); return compact(job);
     } finally { if (target) dispatching.delete(target); }
 }

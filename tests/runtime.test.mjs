@@ -3,27 +3,57 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { fakeConfig } from './fixtures.mjs';
-import { discoverRuntime } from '../server/common.mjs';
+import {fakeConfig,fakeBridgeState} from './fixtures.mjs';
+import {loadBridge} from '../server/bridge.mjs';
+import {spawnSync} from 'node:child_process';
+const temporary=()=>fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-adapter-test-'));
+const remove=root=>{assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(root).startsWith('codex-dsh-adapter-test-'));fs.rmSync(root,{recursive:true,force:true})};
+const calls=root=>fs.readFileSync(path.join(fakeBridgeState(root),'calls.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
 
-test('runtime accepts validated builds and refuses unverified changed code, unsupported versions and carriers', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-dsh-runtime-test-'));
-  try {
-    const config = fakeConfig(root);
-    const runtime = discoverRuntime(config.runtime.installDir);
-    assert.equal(runtime.version, '0.2.1-rc.1');
-    assert.equal(runtime.buildCommit, 'ed75efeffee65f9fe93625bbd76a68cb219aaaf9');
-    assert.equal(runtime.compatibility.status, 'verified-build');
-    fakeConfig(root, { version: '0.2.1-rc.2', dshBuildCommit: '332895e0f7c9d4dbfb29729f5eb367fa263ff986' });
-    assert.equal(discoverRuntime(config.runtime.installDir).version, '0.2.1-rc.2');
-    fakeConfig(root, { dshBuildCommit: 'unvalidated' });
-    assert.throws(() => discoverRuntime(config.runtime.installDir), /adapter code changed/);
-    fakeConfig(root, { version: '0.3.0' });
-    assert.throws(() => discoverRuntime(config.runtime.installDir), /Unsupported DSH installation/);
-    fakeConfig(root, { name: 'another-app' });
-    assert.throws(() => discoverRuntime(config.runtime.installDir), /Unsupported DSH installation/);
-  } finally {
-    assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep) && path.basename(root).startsWith('codex-dsh-runtime-test-'));
-    fs.rmSync(root, { recursive: true, force: true });
-  }
+test('runtime validation and launch requests delegate to the shared client and propagate its failures',async()=>{
+  const root=temporary();try{
+    fakeConfig(root,{runtimeError:'shared runtime rejected'});const bridge=await loadBridge({state:fakeBridgeState(root)});
+    assert.throws(()=>bridge.runtime(),/shared runtime rejected/);
+    await assert.rejects(bridge.call('desktop','doctor',{}, {start:true}),/shared runtime rejected/);
+    assert.equal(fs.existsSync(path.join(fakeBridgeState(root),'calls.jsonl')),false);
+  }finally{remove(root)}
+});
+
+test('default Codex state and supervisor lock use the user home across different AppData hosts',()=>{
+  const root=temporary();try{
+    const script='import {STATE,supervisorLock} from '+JSON.stringify(new URL('../server/common.mjs',import.meta.url).href)+'; console.log(JSON.stringify({STATE,supervisorLock}));';
+    const states=['terminal AppData','MSIX private AppData'].map(host=>{
+      const env={...process.env,USERPROFILE:root,HOME:root,LOCALAPPDATA:path.join(root,host)};delete env.CODEX_DSH_STATE_DIR;
+      const result=spawnSync(process.execPath,['--input-type=module','-e',script],{env,encoding:'utf8',windowsHide:true});
+      assert.equal(result.status,0,result.stderr);return JSON.parse(result.stdout);
+    });
+    assert.equal(states[0].STATE,path.join(root,'.codex','dsh-subagent'));
+    assert.deepEqual(states[1],states[0]);assert.ok(!states[0].supervisorLock.includes('CodexDSHBridge'));
+  }finally{remove(root)}
+});
+
+test('default shared receipt loads from the user home across different AppData hosts',()=>{
+  const root=temporary();try{
+    const cfg=fakeConfig(root);
+    fs.renameSync(fakeBridgeState(root),path.join(root,'.dsh-bridge'));
+    const script='import {loadBridge} from '+JSON.stringify(new URL('../server/bridge.mjs',import.meta.url).href)+'; const bridge=await loadBridge();console.log(JSON.stringify({defaults:bridge.defaults,runtime:bridge.runtime()}));';
+    for(const host of ['terminal AppData','MSIX private AppData']){
+      const env={...process.env,USERPROFILE:root,HOME:root,LOCALAPPDATA:path.join(root,host)};delete env.DSH_BRIDGE_STATE_DIR;
+      const result=spawnSync(process.execPath,['--input-type=module','-e',script],{env,encoding:'utf8',windowsHide:true});
+      assert.equal(result.status,0,result.stderr);const info=JSON.parse(result.stdout);
+      assert.deepEqual(info.defaults,cfg.defaults);assert.equal(info.runtime.version,'fake-runtime');
+    }
+    assert.equal(fs.existsSync(path.join(root,'.dsh-bridge','calls.jsonl')),false);
+  }finally{remove(root)}
+});
+
+test('state environment overrides take precedence over both user-home defaults',()=>{
+  const root=temporary();try{
+    const cfg=fakeConfig(root),state=path.join(root,'custom plugin state');
+    const env={...process.env,USERPROFILE:path.join(root,'empty home'),HOME:path.join(root,'empty home'),LOCALAPPDATA:path.join(root,'unused AppData'),CODEX_DSH_STATE_DIR:state,DSH_BRIDGE_STATE_DIR:fakeBridgeState(root)};
+    const script='import {STATE} from '+JSON.stringify(new URL('../server/common.mjs',import.meta.url).href)+';import {loadBridge} from '+JSON.stringify(new URL('../server/bridge.mjs',import.meta.url).href)+';const bridge=await loadBridge();console.log(JSON.stringify({STATE,defaults:bridge.defaults,runtime:bridge.runtime()}));';
+    const result=spawnSync(process.execPath,['--input-type=module','-e',script],{env,encoding:'utf8',windowsHide:true});
+    assert.equal(result.status,0,result.stderr);const info=JSON.parse(result.stdout);
+    assert.equal(info.STATE,state);assert.deepEqual(info.defaults,cfg.defaults);assert.equal(info.runtime.version,'fake-runtime');
+  }finally{remove(root)}
 });
