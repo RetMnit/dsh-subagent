@@ -10,7 +10,7 @@ import {promisify} from 'node:util';
 import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {fakeConfig,fakeBridgeState} from './fixtures.mjs';
-import {findStatusWindow, panelProfile} from '../server/panel.mjs';
+import {findStatusWindow, panelProfile} from '../plugins/dsh-subagent/server/panel.mjs';
 
 if(process.platform!=='win32')throw new Error('Windows acceptance only');
 const run=promisify(execFile), delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -41,7 +41,7 @@ const config=fakeConfig(state,{endpoint:'http://127.0.0.1:'+server.address().por
 fs.writeFileSync(path.join(state,'config.json'),JSON.stringify({...config,token,defaults:{workspace:root}}));
 async function boot(){
   const before=fs.existsSync(path.join(state,'supervisor.json'))?JSON.parse(fs.readFileSync(path.join(state,'supervisor.json'))).instanceId:null;
-  supervisor=spawn(process.execPath,[fileURLToPath(new URL('../server/supervisor.mjs',import.meta.url))],{
+  supervisor=spawn(process.execPath,[fileURLToPath(new URL('../plugins/dsh-subagent/server/supervisor.mjs',import.meta.url))],{
     env:{...process.env,CODEX_DSH_STATE_DIR:state,DSH_BRIDGE_STATE_DIR:fakeBridgeState(state)},windowsHide:true,stdio:'ignore'});
   for(let i=0;i<200;i++){
     try{const info=JSON.parse(fs.readFileSync(path.join(state,'supervisor.json')));if(info.instanceId!==before)return info}catch{}

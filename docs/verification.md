@@ -1,5 +1,7 @@
 # 验证记录
 
+- 0.7.4（2026-11-06）：插件运行文件迁入 `plugins/dsh-subagent/`，marketplace 不再复制整个仓库。两份 MCP 配置移除缓存 cwd；MCP 与 supervisor 主入口进入绝对状态目录，后台 supervisor 的 spawn 也显式指定状态 cwd。设置 `CODEX_TEST_CLI` 后运行 `npm.cmd test`，34 项通过，失败/跳过均为 0。新增 Windows 回归使用独立 CODEX_HOME、本地 marketplace 和假公共客户端，检查安装副本无 `.git`/测试目录；从缓存 cwd 启动真实 MCP，握手与 doctor 启动 supervisor 后，确认两个进程已使用缓存外的状态目录，在二者保持存活时再次安装同版本成功，后续 ping/doctor 仍可用且 supervisor PID 不变。原有 MCP/supervisor 测试清理改为等待自己的子进程退出。未启动真实 DSH 或调用 DSH 模型；正式 GitHub 安装和最小 codex exec 的机器验收另行记录，不将发布前本地回归当作正式安装验收。
+
 - 0.7.3（2026-11-04）：公共安装回执默认改为 `~/.dsh-bridge/install.json`，插件状态默认改为 `~/.codex/dsh-subagent`，保留两个环境变量覆盖入口。发布前重新执行 `npm.cmd test`，33 项隔离回归全部通过，失败和跳过均为 0；临时用户目录模拟两种 AppData 宿主，验证默认状态与 supervisor 锁一致、公共客户端可加载，以及环境变量优先。setup 已从本机新回执完成只读运行时检查，并初始化新插件状态。用户已在 Codex Desktop 完整实测参数表、并行任务、续接、状态窗口和会话隔离，均正常。包、两份插件清单、MCP 和 supervisor 版本一致；正式安装固定 GitHub `v0.7.3` 标签，依赖公共 dsh-bridge `v0.4.0`，安装步骤见 README。本次发布过程未启动 DSH 任务或修改公共桥接；未自动迁移旧状态，未运行跨 MSIX 宿主实机对照或可选 Edge 冻结验收。
 
 - 0.7.2（2026-11-04）：旧执行器源码已由用户删除，当前仓库无残留路径引用，迁移文档已清除完成的待办。31 项隔离回归全部通过，新增离线 doctor 启动失败诊断验证，并覆盖公共客户端适配层、supervisor 和 MCP 对 startupFailure 的完整透传。包、两份插件清单、MCP 和 supervisor 版本一致；通过本地 marketplace 从当前检出重新安装，核验新缓存无旧执行器源码。未调用真实模型、未修改公共桥接、未推送或打 tag。

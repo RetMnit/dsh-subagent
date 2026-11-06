@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { ROOT, STATE, atomic, readJson } from './common.mjs';
 import { loadBridge } from './bridge.mjs';
 
-if (process.argv.length > 2) throw new Error('Usage: node server/setup.mjs (install Common/dsh-bridge separately first)');
+if (process.argv.length > 2) throw new Error('Usage: node <plugin-root>/server/setup.mjs (install Common/dsh-bridge separately first)');
 const bridge = await loadBridge();
 const runtime = bridge.runtime(); // Shared compatibility check; starts no Host.
 const settingsPath = path.join(STATE, 'config.json');

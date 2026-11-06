@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
+import {once} from 'node:events';
 
 test('MCP handshake, discovery and harmless doctor round-trip', async () => {
   const state=fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-mcp-test-'));const token=randomUUID(),instanceId=randomUUID();
@@ -20,7 +21,7 @@ test('MCP handshake, discovery and harmless doctor round-trip', async () => {
   });await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   fs.writeFileSync(path.join(state,'config.json'),JSON.stringify({token}));
   fs.writeFileSync(path.join(state,'supervisor.json'),JSON.stringify({instanceId,url:'http://127.0.0.1:'+server.address().port}));
-  const child = spawn(process.execPath, [fileURLToPath(new URL('../server/mcp.mjs', import.meta.url))], { env:{...process.env,CODEX_DSH_STATE_DIR:state}, stdio: ['pipe','pipe','pipe'], windowsHide: true });
+  const child = spawn(process.execPath, [fileURLToPath(new URL('../plugins/dsh-subagent/server/mcp.mjs', import.meta.url))], { env:{...process.env,CODEX_DSH_STATE_DIR:state}, stdio: ['pipe','pipe','pipe'], windowsHide: true });
   let buffer = ''; let stderr = ''; const pending = new Map();
   child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8'); child.stderr.on('data', chunk => { stderr += chunk; });
   child.stdout.on('data', chunk => { buffer += chunk; let cut; while ((cut = buffer.indexOf('\n')) >= 0) { const value = JSON.parse(buffer.slice(0,cut)); buffer = buffer.slice(cut+1); pending.get(value.id)?.(value); pending.delete(value.id); } });
@@ -46,7 +47,8 @@ test('MCP handshake, discovery and harmless doctor round-trip', async () => {
     const legacy=await call('tools/call',{name:'dsh_configure',arguments:{conversationId:'chat-A',createNew:true}});assert.match(legacy.error.message,/Unknown argument/);
     assert.equal(stderr,'');
   } finally {
-    child.kill();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
+    if(child.exitCode===null&&child.signalCode===null){child.kill();await once(child,'exit')}
+    server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
     assert.ok(path.resolve(state).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(state).startsWith('codex-dsh-mcp-test-'));fs.rmSync(state,{recursive:true,force:true});
   }
 });

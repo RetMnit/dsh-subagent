@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {statusPanel, matchStatusWindows, panelProfile} from '../server/panel.mjs';
+import {statusPanel, matchStatusWindows, panelProfile} from '../plugins/dsh-subagent/server/panel.mjs';
 
 test('automatic panel opens once for concurrent starts and acknowledges every rendered task', async () => {
   let launches=0;let panel;

@@ -1,13 +1,13 @@
 // Explicit Windows acceptance: uses the real status window, never starts a model.
 import assert from 'node:assert/strict';
-import {api} from '../server/client.mjs';
-import {STATE} from '../server/common.mjs';
-import {statusPanel, findStatusWindow} from '../server/panel.mjs';
+import {api} from '../plugins/dsh-subagent/server/client.mjs';
+import {STATE} from '../plugins/dsh-subagent/server/common.mjs';
+import {statusPanel, findStatusWindow} from '../plugins/dsh-subagent/server/panel.mjs';
 
 const conversationId=process.env.CODEX_THREAD_ID || process.env.CODEX_SESSION_ID;
 if(!conversationId)throw new Error('Current Codex conversation ID is required');
 const doctor=await api('doctor',{conversationId});
-assert.equal(doctor.version,'0.7.3','Restart the idle supervisor from this source before live acceptance');
+assert.equal(doctor.version,'0.7.4','Restart the idle supervisor from this source before live acceptance');
 await api('open',{conversationId,dashboard:true});
 const existing=await findStatusWindow(doctor.dashboardUrl,STATE);
 assert.equal(existing.exists,true,'real Edge app belongs to this conversation');

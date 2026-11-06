@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {runtimeRecords,conversationId} from '../server/records.mjs';
-import {requestStore} from '../server/requests.mjs';
-import {groupSubagents} from '../server/subagents.mjs';
+import {runtimeRecords,conversationId} from '../plugins/dsh-subagent/server/records.mjs';
+import {requestStore} from '../plugins/dsh-subagent/server/requests.mjs';
+import {groupSubagents} from '../plugins/dsh-subagent/server/subagents.mjs';
 
 const temporary=()=>fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-records-test-'));
 const remove=state=>{assert.ok(path.resolve(state).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(state).startsWith('codex-dsh-records-test-'));fs.rmSync(state,{recursive:true,force:true})};

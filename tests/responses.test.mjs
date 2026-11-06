@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {groupSubagents} from '../server/subagents.mjs';
-import {toolResponse,toolContent} from '../server/responses.mjs';
+import {groupSubagents} from '../plugins/dsh-subagent/server/subagents.mjs';
+import {toolResponse,toolContent} from '../plugins/dsh-subagent/server/responses.mjs';
 
 const answer='完整答案和路径 D:/项目/结果.txt\n'.repeat(2000);
 const jobs=[1,2,3,4].map(number=>({jobId:'job-'+number,requestId:'request-'+number,sessionId:'session-'+(number%2),mode:'desktop',title:'任务 '+number,status:'completed',createdAt:new Date(number*1000).toISOString(),finishedAt:new Date(number*1000+1).toISOString(),result:answer+number,

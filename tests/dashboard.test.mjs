@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import {groupSubagents} from '../server/subagents.mjs';
+import {groupSubagents} from '../plugins/dsh-subagent/server/subagents.mjs';
 
 test('dashboard renders all independent tasks and reports actual DOM results without dispatching', async () => {
   const elements=new Map();const requests=[];
@@ -12,7 +12,7 @@ test('dashboard renders all independent tasks and reports actual DOM results wit
   const context={window:{addEventListener(name,fn){handlers[name]=fn}},document,location:{hash:'#private',pathname:'/',search:'?conversationId=chat-A'},sessionStorage:{getItem(){return ''},setItem(){}},history:{replaceState(){}},crypto:{randomUUID:()=> 'fake-window'},URLSearchParams,TextDecoder,AbortController,encodeURIComponent,setInterval(){},setTimeout,
     fetch:async(url,options)=>{if(url.startsWith('/events'))return new Promise(()=>{});const request=JSON.parse(options.body);requests.push(request);return{json:async()=>({result:request.method==='list'?context.testData:{accepted:true}})}}};
   document.querySelector=()=>({textContent:''});
-  vm.runInNewContext(fs.readFileSync(new URL('../ui/dashboard.js',import.meta.url),'utf8'),context);
+  vm.runInNewContext(fs.readFileSync(new URL('../plugins/dsh-subagent/ui/dashboard.js',import.meta.url),'utf8'),context);
   const jobs=[1,2].map(number=>({jobId:'job-'+number,sessionId:'session-'+number,title:'任务 '+number,status:'completed',mode:'desktop',createdAt:new Date(number*1000).toISOString(),finishedAt:new Date(number*1000).toISOString(),promptSummary:'只回复 '+number,result:String(number)}));
   context.testData={conversationId:'chat-A',providers:{desktop:{connected:true}},jobs,subagents:groupSubagents(jobs)};vm.runInNewContext('draw(testData)',context);
   const cards=elements.get('jobs').children;assert.equal(cards.length,2);assert.deepEqual(cards.map(card=>card.dataset.jobId),['job-2','job-1']);
@@ -65,7 +65,7 @@ test('parameter form reads and updates only its Codex conversation configuration
   const context={document:{createElement(){},getElementById:id=>{if(!elements.has(id))elements.set(id,{});return elements.get(id)},querySelector:()=>({})},location:{hash:'#private',pathname:'/',search:'?conversationId=chat-A&configure=config-A'},sessionStorage:{getItem(){},setItem(){}},history:{replaceState(){}},crypto:{randomUUID:()=> 'fake-form'},URLSearchParams,
     setTimeout(fn,ms){timers.set(++nextTimer,{fn,ms});return nextTimer},clearTimeout(id){timers.delete(id)},
     fetch:async(url,options)=>{const request=JSON.parse(options.body);requests.push(request);if(request.method==='saveConfiguration')await new Promise(resolve=>{finishSave=resolve});return{json:async()=>failure?{error:{message:'fake save failure'}}:{result:request.method==='configuration'?entry:{...entry,revision:2}}}}};
-  vm.runInNewContext(fs.readFileSync(new URL('../ui/dashboard.js',import.meta.url),'utf8'),context);
+  vm.runInNewContext(fs.readFileSync(new URL('../plugins/dsh-subagent/ui/dashboard.js',import.meta.url),'utf8'),context);
   for(let i=0;i<20&&!form.onsubmit;i++)await Promise.resolve();
   assert.equal(fields.model.value,'first');fields.model.value='edited';form.oninput();
   const saving=form.onsubmit({preventDefault(){}});assert.equal(elements.get('saved').textContent,'保存中…');assert.equal(button.disabled,true);

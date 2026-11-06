@@ -10,9 +10,9 @@
 
 ## 发布与安装
 
-本插件 0.7.3 通过 [GitHub 标签 v0.7.3](https://github.com/RetMnit/dsh-subagent/tree/v0.7.3) 发布，依赖独立发布的公共 [dsh-bridge v0.4.0](https://github.com/RetMnit/dsh-bridge/tree/v0.4.0)（提交 `a1026e29f7203c3e908107b21e2ff8d2be437256`）。公共桥接安装步骤与插件标签安装、来源切换命令均见 [README](../README.md)。本地检出仅用于开发，不编辑插件缓存。
+本插件 0.7.4 通过 [GitHub 标签 v0.7.4](https://github.com/RetMnit/dsh-subagent/tree/v0.7.4) 发布，依赖独立发布的公共 [dsh-bridge v0.4.0](https://github.com/RetMnit/dsh-bridge/tree/v0.4.0)（提交 `a1026e29f7203c3e908107b21e2ff8d2be437256`）。公共桥接安装步骤与插件标签安装、来源切换命令均见 [README](../README.md)。本地检出仅用于开发，不编辑插件缓存。
 
-本机已完成 setup、源码清理和 Codex Desktop 实测；参数表、并行任务、续接、状态窗口与会话隔离均由用户确认正常。包、插件清单、MCP 和 supervisor 使用相同版本；验证记录见 [verification.md](verification.md)。新会话加载新 MCP 和 skill；本包 setup 只初始化自己的状态，不修改 DSH profile。
+插件包位于 `plugins/dsh-subagent/`，安装缓存不再携带 `.git`。MCP 和 supervisor 使用缓存外的插件状态目录作为 cwd，解除 Windows 目录重命名锁；从旧版升级遇到占用时的操作见 README。包、插件清单、MCP 和 supervisor 使用相同版本；各版本回归与 Desktop 功能验收记录见 [verification.md](verification.md)。新会话加载新 MCP 和 skill；本包 setup 只初始化自己的状态，不修改 DSH profile。
 
 `dsh_doctor` 通过 `providers.<mode>.startupFailure` 透传公共客户端读取的启动失败原因；只读诊断不启动 Host。
 

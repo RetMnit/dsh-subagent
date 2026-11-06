@@ -7,6 +7,7 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import {once} from 'node:events';
 import { fakeConfig, fakeBridgeState } from './fixtures.mjs';
 
 test('one saved configuration starts a concurrent batch, shows every task, deduplicates retries and keeps resumed sessions exclusive', async () => {
@@ -36,7 +37,7 @@ test('one saved configuration starts a concurrent batch, shows every task, dedup
   const endpoint='http://127.0.0.1:'+server.address().port;
   const base=fakeConfig(root,{endpoint});
   fs.writeFileSync(path.join(root,'config.json'),JSON.stringify({...base,token}));
-  const child=spawn(process.execPath,[fileURLToPath(new URL('../server/supervisor.mjs',import.meta.url))],{env:{...process.env,CODEX_DSH_STATE_DIR:root,DSH_BRIDGE_STATE_DIR:fakeBridgeState(root)},windowsHide:true,stdio:'ignore'});
+  const child=spawn(process.execPath,[fileURLToPath(new URL('../plugins/dsh-subagent/server/supervisor.mjs',import.meta.url))],{env:{...process.env,CODEX_DSH_STATE_DIR:root,DSH_BRIDGE_STATE_DIR:fakeBridgeState(root)},windowsHide:true,stdio:'ignore'});
   let heartbeat;
   try{
     const infoFile=path.join(root,'supervisor.json');for(let i=0;i<100&&!fs.existsSync(infoFile);i++)await new Promise(resolve=>setTimeout(resolve,10));
@@ -115,7 +116,8 @@ test('one saved configuration starts a concurrent batch, shows every task, dedup
     assert.equal(dispatches, 5);
   }finally{
     clearInterval(heartbeat);
-    child.kill();server.closeAllConnections();server.close();await new Promise(resolve=>setTimeout(resolve,80));
+    if(child.exitCode===null&&child.signalCode===null){child.kill();await once(child,'exit')}
+    server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
     assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(root).startsWith('codex-dsh-supervisor-test-'));
     fs.rmSync(root,{recursive:true,force:true});
   }

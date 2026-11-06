@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { ROOT, STATE, config, readJson, atomic, equal, terminal, supervisorLock } from './common.mjs';
+import { ROOT, STATE, config, readJson, atomic, equal, terminal, supervisorLock, enterStateDirectory } from './common.mjs';
 import { configurationStore } from './configurations.mjs';
 import { requestStore } from './requests.mjs';
 import { statusPanel } from './panel.mjs';
@@ -13,6 +13,7 @@ import { groupSubagents } from './subagents.mjs';
 
 import { loadBridge } from './bridge.mjs';
 
+enterStateDirectory();
 const cfg = config();
 const bridge = await loadBridge();
 const instanceId = randomUUID();
@@ -110,7 +111,7 @@ function getPanel(id) {
 const methods = {
   doctor: async params => {
     const { runtime, modes } = await bridge.doctor();
-    return { version: '0.7.3', runtime, defaults: cfg.defaults, providers: modes,
+    return { version: '0.7.4', runtime, defaults: cfg.defaults, providers: modes,
       ...(params.conversationId ? {dashboardUrl: dashboardUrl(conversationId(params)), panel: getPanel(params.conversationId).status()} : {}), retention: records.status(), callback: { activeWait: true, idleCodexWakeup: 'not-supported-or-verified' } };
   },
   configure: async params => { const entry = configurations.create(params); return {...entry, url: baseUrl + '/?conversationId=' + encodeURIComponent(entry.conversationId) + '&configure=' + entry.configurationId + '#' + cfg.token}; },

@@ -5,7 +5,12 @@ import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const STATE = process.env.CODEX_DSH_STATE_DIR || path.join(os.homedir(), '.codex', 'dsh-subagent');
+export const STATE = path.resolve(process.env.CODEX_DSH_STATE_DIR || path.join(os.homedir(), '.codex', 'dsh-subagent'));
+// Windows cannot rename a cache directory held as a process working directory.
+export function enterStateDirectory() {
+  fs.mkdirSync(STATE, { recursive: true });
+  process.chdir(STATE);
+}
 const identity = createHash('sha256').update(path.resolve(STATE).toLowerCase()).digest('hex').slice(0, 16);
 export const supervisorLock = process.platform === 'win32' ? '\\\\.\\pipe\\codex-dsh-subagent-' + identity : path.join(STATE, 'supervisor.sock');
 export const terminal = status => ['completed', 'failed', 'cancelled', 'interrupted'].includes(status);

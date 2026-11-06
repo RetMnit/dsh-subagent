@@ -4,9 +4,11 @@ import fs from 'node:fs';
 
 test('portable and Codex compatibility manifests publish the same cache version', () => {
   const read = name => JSON.parse(fs.readFileSync(new URL('../' + name, import.meta.url), 'utf8'));
-  const portable = read('plugin.json');
-  const compatibility = read('.codex-plugin/plugin.json');
+  const portable = read('plugins/dsh-subagent/plugin.json');
+  const compatibility = read('plugins/dsh-subagent/.codex-plugin/plugin.json');
   assert.equal(compatibility.name, portable.name);
   assert.equal(compatibility.version, portable.version);
   assert.equal(read('package.json').version, portable.version);
+  const source = read('.agents/plugins/marketplace.json').plugins[0].source;
+  assert.equal(source.path, './plugins/dsh-subagent');
 });

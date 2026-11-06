@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {fakeConfig,fakeBridgeState} from './fixtures.mjs';
-import {loadBridge} from '../server/bridge.mjs';
+import {loadBridge} from '../plugins/dsh-subagent/server/bridge.mjs';
 const temporary=()=>fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-adapter-test-'));
 const remove=root=>{assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(root).startsWith('codex-dsh-adapter-test-'));fs.rmSync(root,{recursive:true,force:true})};
 const calls=root=>fs.readFileSync(path.join(fakeBridgeState(root),'calls.jsonl'),'utf8').trim().split('\n').map(JSON.parse);

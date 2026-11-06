@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {configurationStore} from '../server/configurations.mjs';
-import {requestStore} from '../server/requests.mjs';
+import {configurationStore} from '../plugins/dsh-subagent/server/configurations.mjs';
+import {requestStore} from '../plugins/dsh-subagent/server/requests.mjs';
 
 test('each Codex conversation has one saved configuration; edits apply automatically while retries keep their snapshots', () => {
   const state=fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-configuration-test-'));

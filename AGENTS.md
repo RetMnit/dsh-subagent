@@ -1,6 +1,7 @@
 # DSH Subagent
 
-- 本包只负责 Codex 的 MCP、配置、状态窗口与记录。安装前先读并安装公共 [dsh-bridge](https://github.com/RetMnit/dsh-bridge)（`node setup.mjs`），然后运行本包 `node server/setup.mjs`；不再接受 `--install-dsh`。
+- 本包只负责 Codex 的 MCP、配置、状态窗口与记录。安装前先读并安装公共 [dsh-bridge](https://github.com/RetMnit/dsh-bridge)（`node setup.mjs`），然后在本仓库运行 `npm.cmd run setup`；不再接受 `--install-dsh`。
+- 插件运行文件放在 `plugins/dsh-subagent/`，marketplace 仅安装该目录，不能把 `.git` 打入缓存。MCP 和 supervisor 的 cwd 使用插件状态目录，资源路径按 import.meta.url / ROOT 定位；Windows 回归必须覆盖真实 MCP/supervisor 存活时刷新同版本缓存。
 - 从 `~/.dsh-bridge/install.json` 的 root 加载公共 `lib/client.mjs`（可用 `DSH_BRIDGE_STATE_DIR` 覆盖状态目录），任务调用固定 `client: 'codex'`，配置快照标识放入 `meta`。Host 启动、协议与 DSH 兼容性校验均由公共客户端负责，不复制实现，不修改公共桥接。
 - 仅在用户明确授权时执行。每个 Codex 会话首次配置保存一份参数，之后自动读取这唯一配置的新值；续接保留原 DSH 参数。配置保存不授予执行权限。
 - 插件说明只放包内，不写入全局或项目 AGENTS.md。状态卡片按 DSH session 分组，job 是一轮交互。

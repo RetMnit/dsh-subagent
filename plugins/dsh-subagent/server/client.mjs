@@ -17,7 +17,7 @@ export async function connectSupervisor() {
   if (!info) {
     const logDir = path.join(STATE, 'logs'); fs.mkdirSync(logDir, { recursive: true });
     const log = fs.openSync(path.join(logDir, 'supervisor.log'), 'a');
-    const child = spawn(process.execPath, [path.join(ROOT, 'server/supervisor.mjs')], { detached: true, windowsHide: true, shell: false,
+    const child = spawn(process.execPath, [path.join(ROOT, 'server/supervisor.mjs')], { cwd: STATE, detached: true, windowsHide: true, shell: false,
       env: { ...process.env, CODEX_DSH_STATE_DIR: STATE }, stdio: ['ignore', log, log] });
     child.unref(); fs.closeSync(log);
     for (let i = 0; i < 50 && !info; i++) { await new Promise(resolve => setTimeout(resolve, 100)); info = await tryInfo(); }

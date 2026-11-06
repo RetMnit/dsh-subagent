@@ -19,9 +19,9 @@ node setup.mjs
 然后从 GitHub 标签安装本插件，并运行安装副本中的 setup：
 
 ```powershell
-codex plugin marketplace add https://github.com/RetMnit/dsh-subagent.git --ref v0.7.3
+codex plugin marketplace add https://github.com/RetMnit/dsh-subagent.git --ref v0.7.4
 codex plugin add dsh-subagent@dsh-subagent-tools
-node "$HOME/.codex/plugins/cache/dsh-subagent-tools/dsh-subagent/0.7.3/server/setup.mjs"
+node "$HOME/.codex/plugins/cache/dsh-subagent-tools/dsh-subagent/0.7.4/server/setup.mjs"
 ```
 
 最后一条使用默认 Codex 缓存位置；如自定义了 Codex 用户目录，使用安装命令返回的插件路径。命令中的 codex 需在 PATH 上，也可以使用 Codex Desktop 自带 codex.exe 的完整路径。
@@ -36,7 +36,7 @@ node "$HOME/.codex/plugins/cache/dsh-subagent-tools/dsh-subagent/0.7.3/server/se
 
 ```powershell
 codex plugin marketplace remove dsh-subagent-tools
-codex plugin marketplace add https://github.com/RetMnit/dsh-subagent.git --ref v0.7.3
+codex plugin marketplace add https://github.com/RetMnit/dsh-subagent.git --ref v0.7.4
 codex plugin add dsh-subagent@dsh-subagent-tools
 ```
 
@@ -44,16 +44,20 @@ codex plugin add dsh-subagent@dsh-subagent-tools
 
 ## 本地开发
 
-仅开发时从本地检出安装，在本插件根目录执行：
+仅开发时从本地检出安装，在仓库根目录执行：
 
 ```powershell
-node server/setup.mjs
+npm.cmd run setup
 codex plugin marketplace remove dsh-subagent-tools
 codex plugin marketplace add .
 codex plugin add dsh-subagent@dsh-subagent-tools
 ```
 
 尚未登记 marketplace 时跳过 remove。本地源码更新后递增插件版本并重新安装；不手改插件缓存。
+
+插件包位于 `plugins/dsh-subagent/`，marketplace 仅复制该目录，安装缓存不包含仓库 `.git`、测试或文档。缓存内的 setup 路径仍是 `server/setup.mjs`。MCP 与后台 supervisor 启动后使用插件状态目录作为 cwd，资源始终按脚本位置定位，避免 Windows 上运行进程占用缓存目录而阻挡刷新。
+
+从 0.7.3 或更早版本升级时，旧 MCP/supervisor 可能仍把旧缓存作为 cwd。若首次切换报“failed to back up plugin cache entry”，先保存工作并正常完全退出一次 Codex Desktop，再重试安装；不要强制结束用户任务。新版进程不再占用缓存 cwd。
 
 ## 公共执行边界
 
@@ -115,6 +119,8 @@ node --test tests/*.test.mjs
 ```
 
 测试安装临时的假 dsh-bridge 客户端，验证配置复用、并发、重试、参数边界、跨聊天隔离、记录清理、MCP 和窗口链路；不调用真实模型，不读取真实 DSH 安装或私人配置。公共桥接的真实 Host 假模型验收在其仓库运行，本包不再维护或运行 DSH 侧验收。
+
+Windows 缓存回归使用独立临时 CODEX_HOME 和本地 marketplace，启动安装副本的真实 MCP 与假公共客户端支持的 supervisor，并在二者存活时刷新同版本缓存。运行前设置 `CODEX_TEST_CLI` 为 `codex.exe` 的绝对路径；未提供时该项显式跳过。
 
 Windows 页面冻结的可选验证是 `node tests/panel-background-live.mjs [output.json]`：使用临时 Edge profile 和假公共客户端，验证冻结页面时的派发、续接、并行、去重、服务重启接管和前台补齐。正式窗口不开放调试端口。本次迁移未运行此可选验证。
 
